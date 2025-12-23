@@ -1,0 +1,30 @@
+{
+  db: {
+    host: "172.18.0.7",
+    port: "3306",
+    username: "user",
+    password: "pass",
+    database: "workflow",
+    charset: "utf8mb4",
+
+  },
+  log: {
+    path: "log",
+    file: "WorkFlow.log",
+    level: "debug",
+
+    rotate: {
+      max_size: 500,
+      backup_count: 7,
+
+    },
+  },
+  lib: {
+    path: "lib",
+
+  },
+  mod: {
+    path: "mod",
+
+  },
+}
