@@ -272,11 +272,10 @@ def main() -> None:
     """
 
     args = parse_args()
-    workflowObj = WorkFlow()
+    wfObj = WorkFlow()
 
     """
     ## gen 2 sample flows for test
-    ## gen a flow
     flow_name = 'flow1'
     flow_json = {
         'tasks': [
@@ -298,8 +297,8 @@ def main() -> None:
             },
         ]
     }
-    flow = workflowObj.FlowObj.genFlow(flow_name, flow_json)
-    workflowObj.FlowObj.createFlow(flow)
+    flow = wfObj.FlowObj.genFlow(flow_name, flow_json)
+    wfObj.FlowObj.createFlow(flow)
 
     flow_name = 'flow2'
     flow_json = {
@@ -322,16 +321,16 @@ def main() -> None:
             },
         ]
     }
-    flow = workflowObj.FlowObj.genFlow(flow_name, flow_json)
-    workflowObj.FlowObj.createFlow(flow)
+    flow = wfObj.FlowObj.genFlow(flow_name, flow_json)
+    wfObj.FlowObj.createFlow(flow)
     """
 
     if args.flow_name:
-        workflowObj.run(flow_name = args.flow_name)
+        wfObj.run(flow_name = args.flow_name)
         sys.exit(0)
 
     if args.list:
-        workflowObj.list_flows()
+        wfObj.list_flows()
         sys.exit(0)
 
 if __name__ == "__main__":
