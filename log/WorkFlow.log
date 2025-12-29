@@ -1,0 +1,30 @@
+{"time": "2025-12-29 08:48:53.328", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.host": "172.18.0.7"}}
+{"time": "2025-12-29 08:48:53.330", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.port": "3306"}}
+{"time": "2025-12-29 08:48:53.330", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.username": "user"}}
+{"time": "2025-12-29 08:48:53.330", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.password": "pass"}}
+{"time": "2025-12-29 08:48:53.330", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.database": "workflow"}}
+{"time": "2025-12-29 08:48:53.330", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.charset": "utf8mb4"}}
+{"time": "2025-12-29 08:48:53.330", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.host": "172.18.0.7"}}
+{"time": "2025-12-29 08:48:53.331", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.port": "3306"}}
+{"time": "2025-12-29 08:48:53.331", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.username": "user"}}
+{"time": "2025-12-29 08:48:53.331", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.password": "pass"}}
+{"time": "2025-12-29 08:48:53.331", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.database": "workflow"}}
+{"time": "2025-12-29 08:48:53.331", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.charset": "utf8mb4"}}
+{"time": "2025-12-29 08:48:53.365", "level": "ERROR", "module": "MySQL", "function": "connect", "message": {"status": "Error connecting to MySQL: (1045, \"Access denied for user 'user'@'172.18.0.6' (using password: YES)\")"}}
+{"time": "2025-12-29 08:48:53.365", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"status": "end"}}
+{"time": "2025-12-29 08:48:53.365", "level": "ERROR", "module": "MySQL", "function": "query", "message": {"status": "Error: No active cursor. Please connect first."}}
+{"time": "2025-12-29 08:48:58.065", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.host": "172.18.0.7"}}
+{"time": "2025-12-29 08:48:58.066", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.port": "3306"}}
+{"time": "2025-12-29 08:48:58.066", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.username": "user"}}
+{"time": "2025-12-29 08:48:58.066", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.password": "pass"}}
+{"time": "2025-12-29 08:48:58.066", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.database": "workflow"}}
+{"time": "2025-12-29 08:48:58.066", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"db.charset": "utf8mb4"}}
+{"time": "2025-12-29 08:48:58.066", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.host": "172.18.0.7"}}
+{"time": "2025-12-29 08:48:58.067", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.port": "3306"}}
+{"time": "2025-12-29 08:48:58.067", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.username": "user"}}
+{"time": "2025-12-29 08:48:58.067", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.password": "pass"}}
+{"time": "2025-12-29 08:48:58.067", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.database": "workflow"}}
+{"time": "2025-12-29 08:48:58.067", "level": "DEBUG", "module": "MySQL", "function": "connect", "message": {"db.charset": "utf8mb4"}}
+{"time": "2025-12-29 08:48:58.093", "level": "ERROR", "module": "MySQL", "function": "connect", "message": {"status": "Error connecting to MySQL: (1045, \"Access denied for user 'user'@'172.18.0.6' (using password: YES)\")"}}
+{"time": "2025-12-29 08:48:58.093", "level": "DEBUG", "module": "WorkFlow", "function": "__init__", "message": {"status": "end"}}
+{"time": "2025-12-29 08:48:58.093", "level": "ERROR", "module": "MySQL", "function": "query", "message": {"status": "Error: No active cursor. Please connect first."}}
