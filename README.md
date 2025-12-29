@@ -343,7 +343,7 @@ There are **no foreign key relationships** between these tables.
 
 ```
 +----------------------+
-|   workflow_flow      |
+|   wf_flow            |
 |----------------------|
 | Flow configuration   |
 | Enable / Disable     |
@@ -362,7 +362,7 @@ Purpose:
 
 ```
 +----------------------+
-|  workflow_syslog     |
+|  wf_syslog           |
 |----------------------|
 | System logs          |
 | Execution logs       |
@@ -380,7 +380,7 @@ Purpose:
 
 ### 10.2 Table Details
 
-#### `workflow_flow`
+#### `wf_flow`
 
 | Column     | Description                |
 | ---------- | -------------------------- |
@@ -394,7 +394,7 @@ Purpose:
 
 ---
 
-#### `workflow_syslog`
+#### `wf_syslog`
 
 | Column      | Description                  |
 | ----------- | ---------------------------- |
