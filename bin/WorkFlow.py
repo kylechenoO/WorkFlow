@@ -125,8 +125,8 @@ class WorkFlow(object):
         ## flow actions sample
         ## gen a flow
         flow_name = 'flow1'
-        flow_json = {
-            'tasks': [
+        flow_procedures = {
+            'procedures': [
                 {
                     'name': 'step1',
                     'mod': 'common.Kt',
@@ -145,7 +145,7 @@ class WorkFlow(object):
                 },
             ]
         }
-        flow = self.FlowObj.genFlow(flow_name, flow_json)
+        flow = self.FlowObj.genFlow(flow_name, flow_procedures)
         self.logger.info({'flow': flow})
 
         ## create flow
@@ -153,8 +153,8 @@ class WorkFlow(object):
 
         ## update flow
         flow_name = 'flow1'
-        flow_json = {
-            'tasks': [
+        flow_procedures = {
+            'procedures': [
                 {
                     'name': 'step1',
                     'mod': 'common.Kt',
@@ -173,7 +173,7 @@ class WorkFlow(object):
                 },
             ]
         }
-        flow = self.FlowObj.genFlow('flow1', flow_json)
+        flow = self.FlowObj.genFlow('flow1', flow_procedures)
         self.FlowObj.updateFlow(flow_name, flow)
 
         ## rename flow
@@ -276,9 +276,10 @@ def main() -> None:
 
     """
     ## gen 2 sample flows for test
+    """
     flow_name = 'flow1'
-    flow_json = {
-        'tasks': [
+    flow_procedures = {
+        'procedures': [
             {
                 'name': 'step1',
                 'mod': 'common.Kt',
@@ -297,12 +298,12 @@ def main() -> None:
             },
         ]
     }
-    flow = wfObj.FlowObj.genFlow(flow_name, flow_json)
+    flow = wfObj.FlowObj.genFlow(flow_name, flow_procedures)
     wfObj.FlowObj.createFlow(flow)
 
     flow_name = 'flow2'
-    flow_json = {
-        'tasks': [
+    flow_procedures = {
+        'procedures': [
             {
                 'name': 'step1',
                 'mod': 'common.Kt',
@@ -321,9 +322,8 @@ def main() -> None:
             },
         ]
     }
-    flow = wfObj.FlowObj.genFlow(flow_name, flow_json)
+    flow = wfObj.FlowObj.genFlow(flow_name, flow_procedures)
     wfObj.FlowObj.createFlow(flow)
-    """
 
     if args.flow_name:
         wfObj.run(flow_name = args.flow_name)

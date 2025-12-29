@@ -8,7 +8,7 @@
 
 **Maintainer:** Kyle
 
-A lightweight Python workflow execution framework based on **JSON-defined flows**, **explicit task dependencies**, and **centralized system services**.
+A lightweight Python workflow execution framework based on **JSON-defined flows**, **explicit procedure dependencies**, and **centralized system services**.
 
 This framework is designed to be:
 
@@ -22,15 +22,15 @@ This framework is designed to be:
 
 ## 1. Overview
 
-A **workflow** is a sequence of tasks executed in a predefined order.
+A **workflow** is a sequence of procedures executed in a predefined order.
 
-Each task:
+Each procedure:
 
 * Receives input parameters
 * Executes business logic
 * Returns a structured result (`dict`)
 
-Tasks exchange data through a shared **execution context**, which is managed entirely by the workflow engine.
+Procedures exchange data through a shared **execution context**, which is managed entirely by the workflow engine.
 
 ---
 
@@ -68,10 +68,10 @@ Tasks exchange data through a shared **execution context**, which is managed ent
                           |
                           v
         +-----------------+------------------+
-        |        Task Execution Loop         |
+        |      Procedure Execution Loop      |
         |------------------------------------|
         |  Resolve parameters                |
-        |  Execute task                      |
+        |  Execute procedures                |
         |  Store result into context         |
         +------------------------------------+
 ```
@@ -92,7 +92,7 @@ WorkFlow/
 │   └── MySQL.py             # MySQL connection & access layer
 ├── mod/                     # mod path
 │   └── common/              # common package path, only for example
-│       └── Kt.py            # Example task module
+│       └── Kt.py            # Example procedure module
 ├── etc/                     # config path
 │   └── global.json          # Global configuration (JSON)
 └── README.md
@@ -178,11 +178,11 @@ Important clarification:
 
 ## 5. Core Concepts
 
-### 5.1 Task
+### 5.1 Procedures
 
-A **task** represents one execution step in a workflow.
+A **procedures** represents one execution step in a workflow.
 
-Task method signature:
+Procedures method signature:
 
 ```python
 def method(self, context: dict, params: dict) -> dict
@@ -202,8 +202,8 @@ Rules:
 
 It is used to:
 
-* Store results of completed tasks
-* Provide data to downstream tasks
+* Store results of completed procedures
+* Provide data to downstream procedures
 * Maintain runtime state during execution
 
 Example:
@@ -219,9 +219,9 @@ context = {
 
 Rules:
 
-* `context[task_name]` stores task output
+* `context[procedure_name]` stores procedure output
 * Keys starting with `_` are system-reserved
-* Tasks should not modify results of other tasks
+* Pasks should not modify results of other procedures
 
 ---
 
@@ -233,7 +233,7 @@ Flows are defined using **standard JSON** and stored in the database.
 
 ```json
 {
-  "tasks": [
+  "procedures": [
     {
       "name": "step1",
       "mod": "common.Kt",
@@ -256,7 +256,7 @@ Flows are defined using **standard JSON** and stored in the database.
 
 ---
 
-## 7. Data Flow Between Tasks
+## 7. Data Flow Between Procedures
 
 ### Execution Example
 
@@ -275,7 +275,7 @@ Passed to step2 as:
 
 Key points:
 
-* Tasks do not directly depend on each other
+* Procedures do not directly depend on each other
 * All dependencies are declared in flow JSON
 * The Flow engine resolves dependencies centrally
 
@@ -285,7 +285,7 @@ Key points:
 
 | Syntax      | Meaning                          |
 | ----------- | -------------------------------- |
-| `@step`     | Reference full task result       |
+| `@step`     | Reference full procedure result  |
 | `@step.key` | Reference a specific key         |
 | `@@value`   | Literal string starting with `@` |
 | `value`     | Normal literal value             |
@@ -314,7 +314,7 @@ Resolved parameters:
 
 ---
 
-## 9. Task Implementation Example
+## 9. Procedure Implementation Example
 
 ```python
 class Kt:
@@ -421,7 +421,7 @@ Attach MySQL Log Handler
     ↓
 Load Flow Definition
     ↓
-Execute Tasks Sequentially
+Execute Procedures Sequentially
     ↓
 Write Logs
     ↓
@@ -436,7 +436,7 @@ End
 
   * Logged
   * Workflow stops immediately
-* Task execution errors:
+* Procedure execution errors:
 
   * Logged
   * Exception propagated
@@ -459,7 +459,7 @@ End
 This framework provides:
 
 * Clear and explicit workflow orchestration
-* Structured data flow between tasks
+* Structured data flow between procedures
 * Centralized logging and persistence
 * Predictable execution behavior
 * A solid foundation for future extensions

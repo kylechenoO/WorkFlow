@@ -1,7 +1,7 @@
 """
-Sample Workflow Task Module
+Sample Workflow Procedure Module
 
-This module defines a simple task class used by the workflow engine
+This module defines a simple procedure class used by the workflow engine
 for demonstration and testing purposes. The class methods are invoked
 dynamically by the Flow engine during workflow execution.
 """
@@ -13,16 +13,16 @@ __email__ = "kyle@hacking-linux.com"
 
 class Kt(object):
     """
-    Example workflow task implementation.
+    Example workflow procedure implementation.
 
-    This class provides simple task methods that log a message and
+    This class provides simple procedure methods that log a message and
     return a structured result. It serves as a reference implementation
-    for custom workflow task modules.
+    for custom workflow procedure modules.
     """
 
     def __init__(self, logger: object) -> None:
         """
-        Initialize the task instance.
+        Initialize the procedure instance.
 
         Args:
             logger (object): Logger instance provided by the workflow engine
@@ -36,10 +36,10 @@ class Kt(object):
 
         Args:
             context (dict): Shared workflow execution context
-            cfgs (dict): Task configuration parameters
+            cfgs (dict): Procedure configuration parameters
 
         Returns:
-            dict: Task execution result
+            dict: Procedure execution result
         """
 
         msg = cfgs['msg']
@@ -55,10 +55,10 @@ class Kt(object):
 
         Args:
             context (dict): Shared workflow execution context
-            cfgs (dict): Task configuration parameters
+            cfgs (dict): Procedure configuration parameters
 
         Returns:
-            dict: Task execution result
+            dict: Procedure execution result
         """
 
         msg = cfgs['msg']

@@ -6,7 +6,7 @@ USE workflow;
 CREATE TABLE wf_flow (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     flow_name VARCHAR(128) NOT NULL UNIQUE,
-    flow_json JSON NOT NULL,
+    flow_procedures JSON NOT NULL,
     enabled TINYINT(1) DEFAULT 0,
     deleted TINYINT(1) DEFAULT 0,
     created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

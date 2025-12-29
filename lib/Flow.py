@@ -3,7 +3,7 @@ Workflow Execution Engine
 
 This module defines the Flow class, which is responsible for managing
 workflow definitions and executing them step by step. A workflow is
-stored as JSON and consists of an ordered list of tasks, each of which
+stored as JSON and consists of an ordered list of procedures, each of which
 dynamically loads and invokes a module method.
 """
 
@@ -25,7 +25,7 @@ class Flow(object):
 
     Responsibilities:
         - CRUD operations for workflow definitions
-        - Dynamic task execution
+        - Dynamic procedures execution
         - Parameter resolution between workflow steps
         - Runtime context propagation
     """
@@ -47,7 +47,7 @@ class Flow(object):
 
     def resolve_params(self, params: dict, context: dict) -> dict:
         """
-        Resolve task parameters using the execution context.
+        Resolve procedures parameters using the execution context.
 
         Supported syntax:
             - Literal values: used as-is
@@ -56,7 +56,7 @@ class Flow(object):
             - Context key reference: @step.key
 
         Args:
-            params (dict): Raw task parameters
+            params (dict): Raw procedures parameters
             context (dict): Execution context from previous steps
 
         Returns:
@@ -133,13 +133,13 @@ class Flow(object):
         result = result[0] if result != [] else []
         return result
 
-    def genFlow(self, flow_name: str, flow_json: dict, enabled: int = 1, deleted: int = 0) -> dict:
+    def genFlow(self, flow_name: str, flow_procedures: dict, enabled: int = 1, deleted: int = 0) -> dict:
         """
         Generate a database-ready workflow record.
 
         Args:
             flow_name (str): Workflow name
-            flow_json (dict): Workflow definition
+            flow_procedures (dict): Workflow definition
             enabled (int): Enable flag (1 or 0)
             deleted (int): Delete flag (1 or 0)
 
@@ -147,15 +147,15 @@ class Flow(object):
             dict: Structured data for database insertion
         """
 
-        if isinstance(flow_json, dict):
-	        flow_json_str = json.dumps(flow_json, ensure_ascii=False)
+        if isinstance(flow_procedures, dict):
+	        flow_procedures_str = json.dumps(flow_procedures, ensure_ascii=False)
 
         else:
-	        flow_json_str = str(flow_json)
+	        flow_procedures_str = str(flow_procedures)
 	
         data = {
 	        "flow_name": [flow_name],
-	        "flow_json": [flow_json_str],
+	        "flow_procedures": [flow_procedures_str],
 	        "enabled": [enabled],
 	        "deleted": [deleted]
         }
@@ -264,9 +264,9 @@ class Flow(object):
         """
         Execute a workflow.
 
-        Each task is executed sequentially. The result of each task is
-        stored in the context under the task name and may be referenced
-        by subsequent tasks.
+        Each procedure is executed sequentially. The result of each procedure is
+        stored in the context under the procedures name and may be referenced
+        by subsequent procedures.
 
         Args:
             flow_name (str): Workflow name
@@ -276,7 +276,7 @@ class Flow(object):
             bool: True if execution completes successfully
 
         Raises:
-            Exception: Re-raised if task execution fails
+            Exception: Re-raised if procedure execution fails
         """
 
         flow = self.getFlow(flow_name)
@@ -284,17 +284,17 @@ class Flow(object):
             self.logger.warning({'status': '%s not existed.' % (flow_name)})
             return False
 
-        flow_json = json.loads(flow['flow_json'])
+        flow_procedures = json.loads(flow['flow_procedures'])
         self.logger.info({'flow_name': flow['flow_name']})
-        self.logger.info({'flow_json': 'flow_json'})
+        self.logger.info({'flow_procedures': 'flow_procedures'})
         self.logger.info({'enabled': flow['enabled']})
         self.logger.info({'deleted': flow['deleted']})
-        for task in flow_json['tasks']:
+        for procedure in flow_procedures['procedures']:
             ## load args
-            mod = task['mod']
-            name = task['name']
-            method = task['method']
-            params = task.get("params", {})
+            mod = procedure['mod']
+            name = procedure['name']
+            method = procedure['method']
+            params = procedure.get("params", {})
 
             ## dbg prt
             self.logger.info({'mod': mod})
@@ -321,9 +321,9 @@ class Flow(object):
                 self.logger.error(
                     {
                         "flow": flow_name,
-                        "task": task.get("name"),
-                        "module": task.get("mod"),
-                        "method": task.get("method"),
+                        "procedure": procedure.get("name"),
+                        "module": procedure.get("mod"),
+                        "method": procedure.get("method"),
                         "error": str(e),
                         "exception": e.__class__.__name__,
                         "traceback": traceback.format_exc()

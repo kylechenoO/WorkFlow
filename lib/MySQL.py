@@ -14,9 +14,10 @@ __email__ = "kyle@hacking-linux.com"
 
 ## import build in pkgs
 import pymysql
+import pandas as pd
 from pymysql import Error
 from logging import Logger
-import pandas as pd
+from urllib.parse import quote_plus
 
 class MySQL(object):
     """
@@ -85,7 +86,7 @@ class MySQL(object):
                 host = host,
                 port = int(port),
                 user = username,
-                password = password,
+                password = quote_plus(password),
                 database = database,
                 charset = charset
             )
