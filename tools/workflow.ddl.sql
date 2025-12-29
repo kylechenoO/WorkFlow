@@ -3,7 +3,7 @@ CREATE DATABASE workflow;
 
 USE workflow;
 
-CREATE TABLE workflow_flow (
+CREATE TABLE wf_flow (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     flow_name VARCHAR(128) NOT NULL UNIQUE,
     flow_json JSON NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE workflow_flow (
     KEY idx_updated_at (updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS workflow_syslog (
+CREATE TABLE IF NOT EXISTS wf_syslog (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     level VARCHAR(16) NOT NULL,

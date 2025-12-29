@@ -30,7 +30,7 @@ class Flow(object):
         - Runtime context propagation
     """
 
-    def __init__(self, logger: object, MySQLObj: object) -> None:
+    def __init__(self, logger: object, MySQLObj: object, table: str) -> None:
         """
         Initialize the Flow engine.
 
@@ -42,6 +42,7 @@ class Flow(object):
         ## get workpath
         self.logger = logger
         self.MySQLObj = MySQLObj
+        self.table = table
         return None
 
     def resolve_params(self, params: dict, context: dict) -> dict:
@@ -114,7 +115,7 @@ class Flow(object):
             list: List of workflow records
         """
 
-        result = self.MySQLObj.query('SELECT * FROM WorkFlow_flow')
+        result = self.MySQLObj.query('SELECT * FROM %s' % (self.table))
         return result
 
     def getFlow(self, flow_name: str) -> dict:
@@ -128,7 +129,7 @@ class Flow(object):
             dict: Workflow record or empty list if not found
         """
 
-        result = self.MySQLObj.query('SELECT * FROM WorkFlow_flow WHERE flow_name = \'%s\';' % (flow_name))
+        result = self.MySQLObj.query('SELECT * FROM %s WHERE flow_name = \'%s\';' % (self.table, flow_name))
         result = result[0] if result != [] else []
         return result
 
@@ -172,7 +173,7 @@ class Flow(object):
             bool: True on success
         """
 
-        ret = self.MySQLObj.insert(flow, 'WorkFlow_flow', [ key for key in flow ])
+        ret = self.MySQLObj.insert(flow, self.table, [ key for key in flow ])
         return ret
 
     def updateFlow(self, flow_name: str, flow: dict) -> bool:
@@ -187,7 +188,7 @@ class Flow(object):
             bool: True on success
         """
 
-        ret = self.MySQLObj.update(flow, 'WorkFlow_flow', [ key for key in flow ], 'flow_name = \"%s\"' % (flow_name))
+        ret = self.MySQLObj.update(flow, self.table, [ key for key in flow ], 'flow_name = \"%s\"' % (flow_name))
         return ret
 
     def renameFlow(self, flow_name_src: str, flow_name_dst: str) -> bool:
@@ -205,7 +206,7 @@ class Flow(object):
         data = {
             "flow_name": [flow_name_dst]
         }
-        ret = self.MySQLObj.update(data, 'WorkFlow_flow', [ key for key in data ], 'flow_name = \"%s\"' % (flow_name_src))
+        ret = self.MySQLObj.update(data, self.table, [ key for key in data ], 'flow_name = \"%s\"' % (flow_name_src))
         return ret
 
     def deleteFlow(self, flow_name: str) -> bool:
@@ -222,7 +223,7 @@ class Flow(object):
         data = {
             "deleted": [1]
         }
-        ret = self.MySQLObj.update(data, 'WorkFlow_flow', [ key for key in data ], 'flow_name = \"%s\"' % (flow_name))
+        ret = self.MySQLObj.update(data, self.table, [ key for key in data ], 'flow_name = \"%s\"' % (flow_name))
         return ret
 
     def enableFlow(self, flow_name: str) -> bool:
@@ -239,7 +240,7 @@ class Flow(object):
         data = {
             "enabled": [1]
         }
-        ret = self.MySQLObj.update(data, 'WorkFlow_flow', [ key for key in data ], 'flow_name = \"%s\"' % (flow_name))
+        ret = self.MySQLObj.update(data, self.table, [ key for key in data ], 'flow_name = \"%s\"' % (flow_name))
         return ret
 
     def disableFlow(self, flow_name: str) -> bool:
@@ -256,7 +257,7 @@ class Flow(object):
         data = {
             "enabled": [0]
         }
-        ret = self.MySQLObj.update(data, 'WorkFlow_flow', [ key for key in data ], 'flow_name = \"%s\"' % (flow_name))
+        ret = self.MySQLObj.update(data, self.table, [ key for key in data ], 'flow_name = \"%s\"' % (flow_name))
         return ret
 
     def execFlow(self, flow_name: str, context: dict) -> bool:
@@ -284,10 +285,10 @@ class Flow(object):
             return False
 
         flow_json = json.loads(flow['flow_json'])
-        self.logger.debug('[flow][exec][flow_name][%s]' % (flow['flow_name']))
-        self.logger.debug('[flow][exec][flow_json][%s]' % (flow_json))
-        self.logger.debug('[flow][exec][enabled][%s]' % (flow['enabled']))
-        self.logger.debug('[flow][exec][deleted][%s]' % (flow['deleted']))
+        self.logger.info({'flow_name': flow['flow_name']})
+        self.logger.info({'flow_json': 'flow_json'})
+        self.logger.info({'enabled': flow['enabled']})
+        self.logger.info({'deleted': flow['deleted']})
         for task in flow_json['tasks']:
             ## load args
             mod = task['mod']
@@ -296,10 +297,10 @@ class Flow(object):
             params = task.get("params", {})
 
             ## dbg prt
-            self.logger.debug('[mod][%s]' % (mod))
-            self.logger.debug('[name][%s]' % (name))
-            self.logger.debug('[method][%s]' % (method))
-            self.logger.debug('[params][%s]' % (params))
+            self.logger.info({'mod': mod})
+            self.logger.info({'name': name})
+            self.logger.info({'method': method})
+            self.logger.info({'params': params})
 
             ## call func
             try:
@@ -313,7 +314,7 @@ class Flow(object):
                 result = func(context, params)
                 context[name] = result
     
-                self.logger.debug('[result][%s]' % (result))
+                self.logger.info({'result': result})
 
             ## handling exceptions
             except Exception as e:

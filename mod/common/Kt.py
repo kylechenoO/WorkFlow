@@ -43,7 +43,7 @@ class Kt(object):
         """
 
         msg = cfgs['msg']
-        self.logger.info('[Kt][msg][%s]' % (msg))
+        self.logger.info({'msg': msg})
         return {
             'status': 0,
             'msg': 'ret from %s' % (msg)
@@ -62,7 +62,7 @@ class Kt(object):
         """
 
         msg = cfgs['msg']
-        self.logger.info('[Kt][msg][%s]' % (msg))
+        self.logger.info({'msg': msg})
         return {
             'status': 0,
             'msg': 'ret from %s' % (msg)

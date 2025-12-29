@@ -86,10 +86,10 @@ class WorkFlow(object):
         self.MySQLObj.connect(self.config['db']['host'], self.config['db']['port'], self.config['db']['username'], self.config['db']['password'], self.config['db']['database'], self.config['db']['charset'])
 
         ## prt log to mysql
-        self.loggerObj.add_mysql_handler(self.MySQLObj)
+        self.loggerObj.add_mysql_handler(self.MySQLObj, self.config['log']['table'])
 
         ## init FlowObj
-        self.FlowObj = Flow(self.logger, self.MySQLObj)
+        self.FlowObj = Flow(self.logger, self.MySQLObj, self.config['flow']['table'])
 
         ## debug output
         self.logger.debug({'status': 'end'})
@@ -104,7 +104,7 @@ class WorkFlow(object):
 
         self.MySQLObj.disconnect()
 
-    def runsample(self) -> bool:
+    def runSample(self) -> bool:
         """
         Demonstration method for workflow lifecycle operations.
 
@@ -273,6 +273,59 @@ def main() -> None:
 
     args = parse_args()
     workflowObj = WorkFlow()
+
+    """
+    ## gen 2 sample flows for test
+    ## gen a flow
+    flow_name = 'flow1'
+    flow_json = {
+        'tasks': [
+            {
+                'name': 'step1',
+                'mod': 'common.Kt',
+                'method': 'prt1',
+                'params': {
+                    'msg': 'hello 1',
+                }
+            },
+            {
+                'name': 'step2',
+                'mod': 'common.Kt',
+                'method': 'prt2',
+                'params': {
+                    'msg': '@step1.msg',
+                }
+            },
+        ]
+    }
+    flow = workflowObj.FlowObj.genFlow(flow_name, flow_json)
+    workflowObj.FlowObj.createFlow(flow)
+
+    flow_name = 'flow2'
+    flow_json = {
+        'tasks': [
+            {
+                'name': 'step1',
+                'mod': 'common.Kt',
+                'method': 'prt1',
+                'params': {
+                    'msg': 'hello 2',
+                }
+            },
+            {
+                'name': 'step2',
+                'mod': 'common.Kt',
+                'method': 'prt2',
+                'params': {
+                    'msg': '@step1.msg',
+                }
+            },
+        ]
+    }
+    flow = workflowObj.FlowObj.genFlow(flow_name, flow_json)
+    workflowObj.FlowObj.createFlow(flow)
+    """
+
     if args.flow_name:
         workflowObj.run(flow_name = args.flow_name)
         sys.exit(0)

@@ -31,7 +31,7 @@ class _MySQLLogHandler(logging.Handler):
     application logic.
     """
 
-    def __init__(self, mysql_obj: object) -> None:
+    def __init__(self, mysql_obj: object, table: str) -> None:
         """
         Initialize the MySQL log handler.
 
@@ -41,7 +41,7 @@ class _MySQLLogHandler(logging.Handler):
 
         super().__init__()
         self.mysql = mysql_obj
-        self.table = 'workflow_syslog'
+        self.table = table
 
     def emit(self, record: str) -> None:
         """
@@ -204,7 +204,7 @@ class Log(object):
 
         return None
 
-    def add_mysql_handler(self, MySQLObj: object) -> bool:
+    def add_mysql_handler(self, MySQLObj: object, table: str) -> bool:
         """
         Dynamically attach a MySQL logging handler.
 
@@ -226,7 +226,7 @@ class Log(object):
             if isinstance(h, _MySQLLogHandler):
                 return True
     
-        mh = _MySQLLogHandler(MySQLObj)
+        mh = _MySQLLogHandler(MySQLObj, table)
     
         # use same log level and formatter as existing handlers
         mh.setLevel(self.logger.level)

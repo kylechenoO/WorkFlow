@@ -2,29 +2,28 @@
   db: {
     host: "172.18.0.7",
     port: "3306",
-    username: "user",
+    username: "root",
     password: "pass",
     database: "workflow",
     charset: "utf8mb4",
-
   },
   log: {
     path: "log",
-    file: "WorkFlow.log",
+    file: "wf.log",
+    table: "wf_syslog",
     level: "debug",
-
     rotate: {
       max_size: 500,
       backup_count: 7,
-
     },
   },
   lib: {
     path: "lib",
-
   },
   mod: {
     path: "mod",
-
+  },
+  flow: {
+    table: "wf_flow",
   },
 }
