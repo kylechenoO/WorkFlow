@@ -12,7 +12,7 @@ sed -i -e "s|setenv VIRTUAL_ENV .*$|setenv VIRTUAL_ENV ${PROJ_PATH}|g" ${PROJ_BI
 ## change the python path
 for fn in $(grep -Rni '^#!' ${PROJ_BIN}/* 2> /dev/null | awk -F':' '{ print $1; }')
 do
-    sed -i -e "s|^#!.*$|#!${PROJ_BIN}|g" ${fn}
+    sed -i -e "s|^#!.*$|#!${PROJ_BIN}/python|g" ${fn}
 
 done
 
