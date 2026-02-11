@@ -1,0 +1,139 @@
+/* =============================================================
+   WorkFlow Web Frontend Styles
+   ============================================================= */
+
+/* -- Sidebar -- */
+#sidebar {
+    min-width: 220px;
+    max-width: 220px;
+    min-height: 100vh;
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#sidebar .nav-link {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    transition: background 0.15s;
+}
+
+#sidebar .nav-link:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+#sidebar .nav-link.active {
+    background: rgba(255, 255, 255, 0.15);
+    font-weight: 600;
+}
+
+#sidebar .nav-link i {
+    margin-right: 8px;
+    width: 18px;
+    text-align: center;
+}
+
+/* -- Content Area -- */
+#content {
+    min-height: 100vh;
+    background: #f8f9fa;
+}
+
+/* -- Cards -- */
+.stat-card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    transition: box-shadow 0.2s;
+}
+
+.stat-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+/* -- Tables -- */
+.table th {
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    color: #6c757d;
+    border-bottom-width: 1px;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+/* -- Badge -- */
+.badge-enabled {
+    background-color: #198754;
+}
+
+.badge-disabled {
+    background-color: #dc3545;
+}
+
+/* -- Login Page -- */
+.login-container {
+    max-width: 400px;
+    margin: 100px auto;
+}
+
+/* -- Flow Editor -- */
+.procedure-step {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+    background: #fff;
+    position: relative;
+}
+
+.procedure-step .step-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.procedure-step .step-number {
+    font-weight: 700;
+    color: #6c757d;
+    font-size: 0.85rem;
+}
+
+.param-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+    align-items: center;
+}
+
+.param-row input {
+    flex: 1;
+}
+
+/* -- CodeMirror overrides -- */
+.CodeMirror {
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    height: auto;
+    min-height: 400px;
+}
+
+/* -- Filter bar -- */
+.filter-bar {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+/* -- Action buttons in tables -- */
+.btn-action {
+    padding: 2px 8px;
+    font-size: 0.8rem;
+}

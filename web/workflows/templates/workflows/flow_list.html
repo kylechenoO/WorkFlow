@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Workflows - WorkFlow{% endblock %}
+{% block page_title %}Workflow Management{% endblock %}
+
+{% block top_actions %}
+<a href="{% url 'workflows:flow_create' %}" class="btn btn-sm btn-primary">
+  <i class="bi bi-plus-lg"></i> Create Workflow
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Steps</th>
+          <th>Status</th>
+          <th>Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for flow in flows %}
+        <tr>
+          <td>
+            <a href="{% url 'workflows:flow_edit' flow.flow_name %}" class="text-decoration-none fw-semibold">
+              {{ flow.flow_name }}
+            </a>
+          </td>
+          <td>{{ flow.procedure_count }}</td>
+          <td>
+            {% if flow.enabled %}
+            <span class="badge badge-enabled">Enabled</span>
+            {% else %}
+            <span class="badge badge-disabled">Disabled</span>
+            {% endif %}
+          </td>
+          <td><small>{{ flow.updated_at|date:"Y-m-d H:i:s" }}</small></td>
+          <td>
+            <a href="{% url 'workflows:flow_edit' flow.flow_name %}" class="btn btn-sm btn-outline-primary btn-action">
+              <i class="bi bi-pencil"></i> Edit
+            </a>
+
+            {% if flow.enabled %}
+            <form method="post" action="{% url 'workflows:flow_disable' flow.flow_name %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-warning btn-action">Disable</button>
+            </form>
+            {% else %}
+            <form method="post" action="{% url 'workflows:flow_enable' flow.flow_name %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-success btn-action">Enable</button>
+            </form>
+            {% endif %}
+
+            <form method="post" action="{% url 'workflows:flow_run' flow.flow_name %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-info btn-action"
+                      onclick="return confirm('Run workflow {{ flow.flow_name }}?');">
+                <i class="bi bi-play"></i> Run
+              </button>
+            </form>
+
+            <!-- Rename Modal Trigger -->
+            <button type="button" class="btn btn-sm btn-outline-secondary btn-action"
+                    data-bs-toggle="modal" data-bs-target="#renameModal-{{ flow.id }}">
+              Rename
+            </button>
+
+            <form method="post" action="{% url 'workflows:flow_delete' flow.flow_name %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-danger btn-action"
+                      onclick="return confirm('Delete workflow {{ flow.flow_name }}?');">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+
+            <!-- Rename Modal -->
+            <div class="modal fade" id="renameModal-{{ flow.id }}" tabindex="-1">
+              <div class="modal-dialog modal-sm">
+                <div class="modal-content">
+                  <form method="post" action="{% url 'workflows:flow_rename' flow.flow_name %}">
+                    {% csrf_token %}
+                    <div class="modal-header">
+                      <h6 class="modal-title">Rename: {{ flow.flow_name }}</h6>
+                      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                      <input type="text" name="new_name" class="form-control" placeholder="New name" required>
+                    </div>
+                    <div class="modal-footer">
+                      <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                      <button type="submit" class="btn btn-sm btn-primary">Rename</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" class="text-center text-muted py-3">No workflows found</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

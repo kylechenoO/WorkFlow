@@ -1,0 +1,5 @@
+[project]
+name = "WorkFlow"
+version = "0.0.1"
+authors = [{ name = "Kyle", email = "kyle@hacking-linux.com" }]
+

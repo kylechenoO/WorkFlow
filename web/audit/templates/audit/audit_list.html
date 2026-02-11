@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log - WorkFlow{% endblock %}
+{% block page_title %}Audit Log{% endblock %}
+
+{% block content %}
+<!-- Filters -->
+<div class="filter-bar">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-md-2">
+      <label class="form-label small">User</label>
+      <select name="user" class="form-select form-select-sm">
+        <option value="">All Users</option>
+        {% for u in users %}
+        <option value="{{ u }}" {% if filter_user == u %}selected{% endif %}>{{ u }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">Action</label>
+      <select name="action" class="form-select form-select-sm">
+        <option value="">All Actions</option>
+        {% for a in actions %}
+        <option value="{{ a }}" {% if filter_action == a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">Target Type</label>
+      <select name="target_type" class="form-select form-select-sm">
+        <option value="">All Types</option>
+        {% for t in target_types %}
+        <option value="{{ t }}" {% if filter_target == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">From</label>
+      <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filter_date_from }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">To</label>
+      <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filter_date_to }}">
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn btn-sm btn-primary w-100">
+        <i class="bi bi-funnel"></i> Filter
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Audit Table -->
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>User</th>
+          <th>Action</th>
+          <th>Target Type</th>
+          <th>Target Name</th>
+          <th>IP</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+        <tr>
+          <td><small>{{ entry.created_at|date:"Y-m-d H:i:s" }}</small></td>
+          <td>{{ entry.user.username|default:"system" }}</td>
+          <td><span class="badge bg-secondary">{{ entry.action }}</span></td>
+          <td>{{ entry.target_type }}</td>
+          <td>{{ entry.target_name }}</td>
+          <td><small class="text-muted">{{ entry.ip_address|default:"-" }}</small></td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-3">No audit entries found</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

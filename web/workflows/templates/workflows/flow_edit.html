@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if is_create %}Create Workflow{% else %}Edit: {{ flow_name }}{% endif %} - WorkFlow{% endblock %}
+{% block page_title %}{% if is_create %}Create Workflow{% else %}Edit: {{ flow_name }}{% endif %}{% endblock %}
+
+{% block extra_css %}
+<!-- CodeMirror CSS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldgutter.min.css">
+{% endblock %}
+
+{% block content %}
+<form method="post" id="flow-form">
+  {% csrf_token %}
+
+  {% if is_create %}
+  <!-- Flow Name (only for create) -->
+  <div class="mb-3" style="max-width: 400px;">
+    <label for="flow_name" class="form-label fw-semibold">Workflow Name</label>
+    <input type="text" class="form-control" id="flow_name" name="flow_name"
+           value="{{ flow_name }}" required placeholder="e.g. my_workflow">
+  </div>
+  {% endif %}
+
+  <!-- Hidden field for procedures JSON (submitted with form) -->
+  <input type="hidden" name="procedures_json" id="procedures_json" value="">
+
+  <!-- Editor Tabs -->
+  <ul class="nav nav-tabs mb-0" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="tab-form" data-bs-toggle="tab"
+              data-bs-target="#pane-form" type="button" role="tab">
+        <i class="bi bi-ui-checks-grid"></i> Form Editor
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-json" data-bs-toggle="tab"
+              data-bs-target="#pane-json" type="button" role="tab">
+        <i class="bi bi-code-slash"></i> JSON Editor
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white">
+    <!-- Form Editor Pane -->
+    <div class="tab-pane fade show active" id="pane-form" role="tabpanel">
+      <div id="steps-container">
+        <!-- Steps rendered by JavaScript -->
+      </div>
+      <button type="button" id="btn-add-step" class="btn btn-outline-primary mt-2">
+        <i class="bi bi-plus-lg"></i> Add Step
+      </button>
+    </div>
+
+    <!-- JSON Editor Pane -->
+    <div class="tab-pane fade" id="pane-json" role="tabpanel">
+      <textarea id="json-editor">{{ procedures_json }}</textarea>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  <div class="d-flex gap-2 mt-3">
+    <button type="submit" class="btn btn-primary" id="btn-save">
+      <i class="bi bi-check-lg"></i> {% if is_create %}Create{% else %}Save{% endif %}
+    </button>
+    <a href="{% url 'workflows:flow_list' %}" class="btn btn-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<!-- CodeMirror JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldgutter.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/brace-fold.min.js"></script>
+
+<!-- Flow Editor JS -->
+<script src="{% static 'js/flow_editor.js' %}"></script>
+<script>
+  (function () {
+    // parse initial data
+    var rawJson = {{ procedures_json|safe }};
+    var initialData = (typeof rawJson === 'string') ? JSON.parse(rawJson) : rawJson;
+
+    // init editor
+    FlowEditor.init(initialData);
+
+    // intercept form submit to sync data
+    document.getElementById('flow-form').addEventListener('submit', function (e) {
+      // validate
+      var err = FlowEditor.validate();
+      if (err) {
+        e.preventDefault();
+        alert(err);
+        return false;
+      }
+
+      // serialize to hidden field
+      var data = FlowEditor.getData();
+      document.getElementById('procedures_json').value = JSON.stringify(data);
+    });
+  })();
+</script>
+{% endblock %}

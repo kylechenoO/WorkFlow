@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Groups - WorkFlow{% endblock %}
+{% block page_title %}Group Management{% endblock %}
+
+{% block top_actions %}
+<a href="{% url 'accounts:group_create' %}" class="btn btn-sm btn-primary">
+  <i class="bi bi-plus-lg"></i> Create Group
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Members</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in groups %}
+        <tr>
+          <td><strong>{{ g.name }}</strong></td>
+          <td>{{ g.user_set.count }}</td>
+          <td>
+            <a href="{% url 'accounts:group_edit' g.id %}" class="btn btn-sm btn-outline-primary btn-action">Edit</a>
+            <form method="post" action="{% url 'accounts:group_delete' g.id %}" class="d-inline"
+                  onsubmit="return confirm('Delete group {{ g.name }}?');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-danger btn-action">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="3" class="text-center text-muted py-3">No groups found</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
