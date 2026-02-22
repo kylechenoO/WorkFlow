@@ -3,9 +3,9 @@
     host: "172.18.0.7",
     port: "3306",
     username: "root",
-    password: "pass",
+    password: "pass",       // CHANGE ME: development default only
     database: "workflow",
-    charset: "utf8mb4",
+    charset: "utf8mb4"
   },
   log: {
     path: "log",
@@ -14,26 +14,26 @@
     level: "debug",
     rotate: {
       max_size: 500,
-      backup_count: 7,
-    },
+      backup_count: 7
+    }
   },
   lib: {
-    path: "lib",
+    path: "lib"
   },
   mod: {
-    path: "mod",
+    path: "mod"
   },
   flow: {
-    table: "wf_flow",
+    table: "wf_flow"
   },
   api: {
     host: "0.0.0.0",
-    port: 5000,
-    debug: false,
+    port: 5001,
+    debug: true   // set to false in production
   },
   web: {
-    secret_key: "change-me-in-production",
-    debug: true,
-    port: 8000,
-  },
+    secret_key: "change-me-in-production",  // CHANGE ME: generate a secure random key
+    port: 5002,
+    debug: true   // set to false in production
+  }
 }

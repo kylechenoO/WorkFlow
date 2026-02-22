@@ -12,7 +12,7 @@ Responsibilities:
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import buildin pkgs
@@ -48,16 +48,16 @@ class Notify(object):
 
         Args:
             smtp_host (str): SMTP server hostname
-            smtp_port (int): SMTP server port
-            username (str): Optional SMTP login username
-            password (str): Optional SMTP login password
+            smtp_port (int): SMTP server port (default: 587)
+            username (str): Optional SMTP login username (default: "")
+            password (str): Optional SMTP login password (default: "")
             from_addr (str): Sender email address
-            to_addrs (list): List of recipient email addresses
-            subject (str): Email subject
-            body (str): Email body content
-            body_type (str): Optional body MIME type (plain or html), default plain
-            cc (list): Optional list of CC email addresses
-            use_tls (bool): Optional use STARTTLS, default True
+            to_addrs (list): List of recipient email addresses (default: [])
+            subject (str): Email subject (default: "")
+            body (str): Email body content (default: "")
+            body_type (str): Optional body MIME type plain or html (default: "plain")
+            cc (list): Optional list of CC email addresses (default: [])
+            use_tls (bool): Optional use STARTTLS (default: true)
 
         Returns:
             dict: Send result
@@ -144,10 +144,10 @@ class Notify(object):
 
         Args:
             url (str): Webhook URL
-            method (str): Optional HTTP method, default POST
-            headers (dict): Optional request headers
-            body (dict): Request body (sent as JSON)
-            timeout (int): Optional request timeout in seconds, default 30
+            method (str): Optional HTTP method (default: "POST")
+            headers (dict): Optional request headers (default: {})
+            body (dict): Optional request body sent as JSON (default: {})
+            timeout (int): Optional request timeout in seconds (default: 30)
 
         Returns:
             dict: Send result
@@ -157,7 +157,7 @@ class Notify(object):
         url = cfgs['url']
         method = cfgs.get('method', 'POST')
         headers = cfgs.get('headers', {})
-        body = cfgs['body']
+        body = cfgs.get('body', None)
         timeout = int(cfgs.get('timeout', 30))
 
         ## debug prt
@@ -167,13 +167,10 @@ class Notify(object):
 
         try:
             ## send webhook request
-            response = requests.request(
-                method=method,
-                url=url,
-                headers=headers,
-                json=body,
-                timeout=timeout
-            )
+            kwargs = {'method': method, 'url': url, 'headers': headers, 'timeout': timeout}
+            if body is not None:
+                kwargs['json'] = body
+            response = requests.request(**kwargs)
 
             ## check response status
             status = response.status_code >= 200 and response.status_code < 300

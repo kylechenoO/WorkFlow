@@ -1,26 +1,103 @@
 {% extends "base.html" %}
+{% load static %}
 
-{% block title %}Users - WorkFlow{% endblock %}
-{% block page_title %}User Management{% endblock %}
+{% block title %}System - WorkFlow{% endblock %}
+{% block page_title %}System{% endblock %}
 
-{% block top_actions %}
-<a href="{% url 'accounts:user_create' %}" class="btn btn-sm btn-primary">
-  <i class="bi bi-plus-lg"></i> Create User
-</a>
-{% endblock %}
+{% block top_actions %}{% endblock %}
 
 {% block content %}
+<!-- System Tabs -->
+<ul class="nav nav-tabs mb-3">
+  {% if perms_map.users.view %}
+  <li class="nav-item">
+    <a class="nav-link active" href="{% url 'accounts:user_list' %}">
+      <i class="bi bi-people"></i> Users
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.groups.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:group_list' %}">
+      <i class="bi bi-collection"></i> Groups
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.roles.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:role_list' %}">
+      <i class="bi bi-person-badge"></i> Roles
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.system.edit %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:timezone' %}">
+      <i class="bi bi-clock"></i> TimeZone
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:ssl' %}">
+      <i class="bi bi-shield-lock"></i> SSL Certs
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:services' %}">
+      <i class="bi bi-hdd-rack"></i> Services
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:backup' %}">
+      <i class="bi bi-download"></i> Backup
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:backup' %}?tab=restore">
+      <i class="bi bi-arrow-counterclockwise"></i> Restore
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:version' %}">
+      <i class="bi bi-info-circle"></i> Version
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:license' %}">
+      <i class="bi bi-file-text"></i> License
+    </a>
+  </li>
+  {% endif %}
+</ul>
+
+<!-- Search Bar -->
+<div class="mb-2">
+  <div class="d-flex align-items-center gap-2 flex-wrap w-100">
+    {% if perms_map.users.create %}
+    <a href="{% url 'accounts:user_create' %}" class="btn btn-sm btn-primary flex-shrink-0">
+      <i class="bi bi-plus-lg"></i> Create User
+    </a>
+    {% endif %}
+    <div class="input-group input-group-sm ms-auto" style="max-width:320px;">
+      <span class="input-group-text"><i class="bi bi-search"></i></span>
+      <input type="text" id="table-search" class="form-control" placeholder="Search users...">
+      <button class="btn btn-primary" type="button" id="table-search-btn">Search</button>
+    </div>
+  </div>
+</div>
+
 <div class="card">
   <div class="card-body p-0">
-    <table class="table table-hover mb-0">
+    <table class="table table-hover mb-0 sortable" id="data-table">
       <thead>
         <tr>
-          <th>Username</th>
-          <th>Email</th>
-          <th>Name</th>
-          <th>Status</th>
-          <th>Last Login</th>
-          <th>Actions</th>
+          <th style="width:14%" data-sort="string">Username</th>
+          <th style="width:16%" data-sort="string">Email</th>
+          <th style="width:12%" data-sort="string">Name</th>
+          <th style="width:14%" data-sort="string">Groups</th>
+          <th style="width:14%" data-sort="string">Roles</th>
+          <th style="width:8%" data-sort="string">Status</th>
+          <th style="width:12%" data-sort="date">Last Login</th>
+          <th style="width:10%">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -30,6 +107,20 @@
           <td>{{ u.email|default:"-" }}</td>
           <td>{{ u.first_name }} {{ u.last_name }}</td>
           <td>
+            {% for g in u.groups.all %}
+            <span class="badge bg-info text-dark">{{ g.name }}</span>
+            {% empty %}
+            <span class="text-muted">-</span>
+            {% endfor %}
+          </td>
+          <td>
+            {% for r in u.wf_roles.all %}
+            <span class="badge bg-secondary">{{ r.name }}</span>
+            {% empty %}
+            <span class="text-muted">-</span>
+            {% endfor %}
+          </td>
+          <td>
             {% if u.is_active %}
             <span class="badge badge-enabled">Active</span>
             {% else %}
@@ -38,7 +129,10 @@
           </td>
           <td><small>{{ u.last_login|date:"Y-m-d H:i"|default:"Never" }}</small></td>
           <td>
+            {% if perms_map.users.edit %}
             <a href="{% url 'accounts:user_edit' u.id %}" class="btn btn-sm btn-outline-primary btn-action">Edit</a>
+            {% endif %}
+            {% if perms_map.users.toggle and u.username != 'admin' %}
             <form method="post" action="{% url 'accounts:user_toggle' u.id %}" class="d-inline">
               {% csrf_token %}
               {% if u.is_active %}
@@ -47,15 +141,42 @@
               <button type="submit" class="btn btn-sm btn-outline-success btn-action">Enable</button>
               {% endif %}
             </form>
+            {% endif %}
           </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="6" class="text-center text-muted py-3">No users found</td>
+          <td colspan="8" class="text-center text-muted py-3">No users found</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+{% include "_pagination.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/sortable_table.js' %}"></script>
+<script>
+(function() {
+  var input = document.getElementById('table-search');
+  if (!input) return;
+  var btn = document.getElementById('table-search-btn');
+  function doSearch() {
+    var term = input.value.toLowerCase();
+    var rows = document.querySelectorAll('#data-table tbody tr');
+    rows.forEach(function(row) {
+      var cell = row.cells[0];
+      if (!cell) return;
+      var text = cell.textContent.toLowerCase();
+      row.style.display = text.indexOf(term) !== -1 ? '' : 'none';
+    });
+  }
+  btn.addEventListener('click', doSearch);
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doSearch();
+  });
+})();
+</script>
 {% endblock %}

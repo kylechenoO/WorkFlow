@@ -36,3 +36,6 @@ prometheus_client>=0.20.0
 openpyxl>=3.1.0
 gunicorn>=22.0.0
 Django>=4.2,<5.0
+APScheduler>=3.10.0,<4.0.0
+pymongo>=4.6.0,<5.0.0
+kafka-python>=2.0.0

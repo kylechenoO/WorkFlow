@@ -7,13 +7,31 @@ plus login/logout functionality.
 
 ## import django pkgs
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User, Group
 from django.contrib import messages
+from django.core.paginator import Paginator
 
-from .models import Role
-from .forms import UserCreateForm, UserEditForm, GroupForm, RoleForm
+from .models import Role, Permission, GroupPermission
+from .forms import UserCreateForm, UserEditForm, GroupForm, RoleForm, ProfileForm
+from accounts.decorators import require_permission
+from collections import OrderedDict
+
+## default groups and roles that cannot be deleted
+PROTECTED_NAMES = {'admin', 'user'}
+
+
+def _get_permission_groups():
+    """Build ordered dict of permissions grouped by page for template rendering."""
+
+    perms = Permission.objects.all().order_by('page', 'action')
+    groups = OrderedDict()
+    for p in perms:
+        if p.page not in groups:
+            groups[p.page] = []
+        groups[p.page].append(p)
+    return groups
 
 
 ## =============================================================
@@ -42,6 +60,14 @@ def login_view(request):
                     action='login',
                     target_type='user',
                     target_name=user.username,
+                    detail={
+                        'request': {
+                            'method': 'POST',
+                            'path': '/accounts/login/',
+                            'body': {'username': username},
+                        },
+                        'response': {'status_code': 302, 'redirect': '/'}
+                    },
                     ip_address=request.META.get('REMOTE_ADDR')
                 )
             except Exception:
@@ -66,6 +92,10 @@ def logout_view(request):
             action='logout',
             target_type='user',
             target_name=request.user.username,
+            detail={
+                'request': {'method': 'GET', 'path': '/accounts/logout/'},
+                'response': {'status_code': 302, 'redirect': '/accounts/login/'}
+            },
             ip_address=request.META.get('REMOTE_ADDR')
         )
     except Exception:
@@ -75,22 +105,156 @@ def logout_view(request):
     return redirect('/accounts/login/')
 
 
+@login_required
+def change_password(request):
+    """Handle user password change."""
+
+    if request.method == 'POST':
+        current_password = request.POST.get('current_password', '')
+        new_password = request.POST.get('new_password', '')
+        confirm_password = request.POST.get('confirm_password', '')
+
+        if not request.user.check_password(current_password):
+            messages.error(request, 'Current password is incorrect.')
+        elif len(new_password) < 8:
+            messages.error(request, 'New password must be at least 8 characters.')
+        elif new_password != confirm_password:
+            messages.error(request, 'New passwords do not match.')
+        else:
+            request.user.set_password(new_password)
+            request.user.save()
+            update_session_auth_hash(request, request.user)
+
+            ## log audit
+            try:
+                from audit.models import AuditLog
+                AuditLog.log(
+                    user=request.user,
+                    action='update',
+                    target_type='user',
+                    target_name=request.user.username,
+                    detail={'field': 'password'},
+                    ip_address=request.META.get('REMOTE_ADDR')
+                )
+            except Exception:
+                pass
+
+            messages.success(request, 'Password changed successfully.')
+            return redirect('/')
+
+    return render(request, 'accounts/change_password.html', {
+        'nav_active': '',
+    })
+
+
+## =============================================================
+## User Profile
+## =============================================================
+
+@login_required
+def profile(request):
+    """User profile page — edit personal info and change password."""
+
+    profile_saved = False
+    password_changed = False
+
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+
+        if action == 'update_profile':
+            form = ProfileForm(request.POST, instance=request.user)
+            if form.is_valid():
+                form.save()
+
+                ## log audit
+                try:
+                    from audit.models import AuditLog
+                    AuditLog.log(
+                        user=request.user,
+                        action='update',
+                        target_type='user',
+                        target_name=request.user.username,
+                        detail={'field': 'profile'},
+                        ip_address=request.META.get('REMOTE_ADDR')
+                    )
+                except Exception:
+                    pass
+
+                messages.success(request, 'Profile updated successfully.')
+                return redirect('accounts:profile')
+
+        elif action == 'change_password':
+            current_password = request.POST.get('current_password', '')
+            new_password = request.POST.get('new_password', '')
+            confirm_password = request.POST.get('confirm_password', '')
+
+            if not request.user.check_password(current_password):
+                messages.error(request, 'Current password is incorrect.')
+            elif len(new_password) < 8:
+                messages.error(request, 'New password must be at least 8 characters.')
+            elif new_password != confirm_password:
+                messages.error(request, 'New passwords do not match.')
+            else:
+                request.user.set_password(new_password)
+                request.user.save()
+                update_session_auth_hash(request, request.user)
+
+                ## log audit
+                try:
+                    from audit.models import AuditLog
+                    AuditLog.log(
+                        user=request.user,
+                        action='update',
+                        target_type='user',
+                        target_name=request.user.username,
+                        detail={'field': 'password'},
+                        ip_address=request.META.get('REMOTE_ADDR')
+                    )
+                except Exception:
+                    pass
+
+                messages.success(request, 'Password changed successfully.')
+                return redirect('accounts:profile')
+
+    form = ProfileForm(instance=request.user)
+
+    ## get user groups and roles for display
+    user_groups = request.user.groups.all()
+    user_roles = request.user.wf_roles.all()
+
+    return render(request, 'accounts/profile.html', {
+        'nav_active': '',
+        'form': form,
+        'user_groups': user_groups,
+        'user_roles': user_roles,
+    })
+
+
 ## =============================================================
 ## User Management
 ## =============================================================
 
-@login_required
+@require_permission('users', 'view')
 def user_list(request):
     """List all users."""
 
-    users = User.objects.all().order_by('username')
+    try:
+        per_page = min(max(int(request.GET.get('per_page', 20)), 10), 2000)
+    except (ValueError, TypeError):
+        per_page = 20
+    users_qs = User.objects.all().order_by('username')
+    paginator = Paginator(users_qs, per_page)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
     return render(request, 'accounts/user_list.html', {
-        'nav_active': 'users',
-        'users': users,
+        'nav_active': 'system',
+        'users': page_obj,
+        'page_obj': page_obj,
+        'per_page': per_page,
+        'total_count': paginator.count,
     })
 
 
-@login_required
+@require_permission('users', 'create')
 def user_create(request):
     """Create a new user."""
 
@@ -124,7 +288,7 @@ def user_create(request):
     })
 
 
-@login_required
+@require_permission('users', 'edit')
 def user_edit(request, user_id):
     """Edit an existing user."""
 
@@ -160,11 +324,16 @@ def user_edit(request, user_id):
     })
 
 
-@login_required
+@require_permission('users', 'toggle')
 def user_toggle(request, user_id):
     """Toggle user active status (enable/disable)."""
 
     user_obj = get_object_or_404(User, pk=user_id)
+
+    ## prevent disabling the default admin account
+    if user_obj.username == 'admin':
+        messages.error(request, 'The default admin account cannot be disabled.')
+        return redirect('accounts:user_list')
 
     if request.method == 'POST':
         user_obj.is_active = not user_obj.is_active
@@ -194,18 +363,28 @@ def user_toggle(request, user_id):
 ## Group Management
 ## =============================================================
 
-@login_required
+@require_permission('groups', 'view')
 def group_list(request):
     """List all groups."""
 
-    groups = Group.objects.all().order_by('name')
+    try:
+        per_page = min(max(int(request.GET.get('per_page', 20)), 10), 2000)
+    except (ValueError, TypeError):
+        per_page = 20
+    groups_qs = Group.objects.all().order_by('name')
+    paginator = Paginator(groups_qs, per_page)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
     return render(request, 'accounts/group_list.html', {
-        'nav_active': 'groups',
-        'groups': groups,
+        'nav_active': 'system',
+        'groups': page_obj,
+        'page_obj': page_obj,
+        'per_page': per_page,
+        'total_count': paginator.count,
+        'protected_names': PROTECTED_NAMES,
     })
 
 
-@login_required
+@require_permission('groups', 'create')
 def group_create(request):
     """Create a new group."""
 
@@ -236,18 +415,28 @@ def group_create(request):
         'nav_active': 'groups',
         'form': form,
         'form_title': 'Create Group',
+        'permission_groups': _get_permission_groups(),
+        'selected_perm_ids': [],
     })
 
 
-@login_required
+@require_permission('groups', 'edit')
 def group_edit(request, group_id):
     """Edit an existing group."""
 
     group_obj = get_object_or_404(Group, pk=group_id)
+    is_protected = group_obj.name in PROTECTED_NAMES
 
     if request.method == 'POST':
         form = GroupForm(request.POST, instance=group_obj)
         if form.is_valid():
+            ## protect default group name from rename
+            if is_protected:
+                new_name = form.cleaned_data.get('name', '')
+                if new_name != group_obj.name:
+                    messages.error(request, 'Default group "%s" cannot be renamed.' % group_obj.name)
+                    return redirect('accounts:group_list')
+
             group = form.save()
 
             ## log audit
@@ -268,20 +457,33 @@ def group_edit(request, group_id):
     else:
         form = GroupForm(instance=group_obj)
 
+    ## get selected permission IDs for template
+    selected_perm_ids = list(
+        GroupPermission.objects.filter(group=group_obj).values_list('permission_id', flat=True)
+    )
+
     return render(request, 'accounts/group_form.html', {
         'nav_active': 'groups',
         'form': form,
         'form_title': 'Edit Group: %s' % group_obj.name,
+        'is_protected': is_protected,
+        'permission_groups': _get_permission_groups(),
+        'selected_perm_ids': selected_perm_ids,
     })
 
 
-@login_required
+@require_permission('groups', 'delete')
 def group_delete(request, group_id):
     """Delete a group."""
 
     group_obj = get_object_or_404(Group, pk=group_id)
 
     if request.method == 'POST':
+        ## protect default groups
+        if group_obj.name in PROTECTED_NAMES:
+            messages.error(request, 'Default group "%s" cannot be deleted.' % group_obj.name)
+            return redirect('accounts:group_list')
+
         name = group_obj.name
         group_obj.delete()
 
@@ -307,18 +509,28 @@ def group_delete(request, group_id):
 ## Role Management
 ## =============================================================
 
-@login_required
+@require_permission('roles', 'view')
 def role_list(request):
     """List all roles."""
 
-    roles = Role.objects.all().order_by('name')
+    try:
+        per_page = min(max(int(request.GET.get('per_page', 20)), 10), 2000)
+    except (ValueError, TypeError):
+        per_page = 20
+    roles_qs = Role.objects.all().order_by('name')
+    paginator = Paginator(roles_qs, per_page)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
     return render(request, 'accounts/role_list.html', {
-        'nav_active': 'roles',
-        'roles': roles,
+        'nav_active': 'system',
+        'roles': page_obj,
+        'page_obj': page_obj,
+        'per_page': per_page,
+        'total_count': paginator.count,
+        'protected_names': PROTECTED_NAMES,
     })
 
 
-@login_required
+@require_permission('roles', 'create')
 def role_create(request):
     """Create a new role."""
 
@@ -349,18 +561,28 @@ def role_create(request):
         'nav_active': 'roles',
         'form': form,
         'form_title': 'Create Role',
+        'permission_groups': _get_permission_groups(),
+        'selected_perm_ids': [],
     })
 
 
-@login_required
+@require_permission('roles', 'edit')
 def role_edit(request, role_id):
     """Edit an existing role."""
 
     role_obj = get_object_or_404(Role, pk=role_id)
+    is_protected = role_obj.name in PROTECTED_NAMES
 
     if request.method == 'POST':
         form = RoleForm(request.POST, instance=role_obj)
         if form.is_valid():
+            ## protect default role name from rename
+            if is_protected:
+                new_name = form.cleaned_data.get('name', '')
+                if new_name != role_obj.name:
+                    messages.error(request, 'Default role "%s" cannot be renamed.' % role_obj.name)
+                    return redirect('accounts:role_list')
+
             role = form.save()
 
             ## log audit
@@ -381,20 +603,31 @@ def role_edit(request, role_id):
     else:
         form = RoleForm(instance=role_obj)
 
+    ## get selected permission IDs for template
+    selected_perm_ids = list(role_obj.permissions.values_list('id', flat=True))
+
     return render(request, 'accounts/role_form.html', {
         'nav_active': 'roles',
         'form': form,
         'form_title': 'Edit Role: %s' % role_obj.name,
+        'is_protected': is_protected,
+        'permission_groups': _get_permission_groups(),
+        'selected_perm_ids': selected_perm_ids,
     })
 
 
-@login_required
+@require_permission('roles', 'delete')
 def role_delete(request, role_id):
     """Delete a role."""
 
     role_obj = get_object_or_404(Role, pk=role_id)
 
     if request.method == 'POST':
+        ## protect default roles
+        if role_obj.name in PROTECTED_NAMES:
+            messages.error(request, 'Default role "%s" cannot be deleted.' % role_obj.name)
+            return redirect('accounts:role_list')
+
         name = role_obj.name
         role_obj.delete()
 

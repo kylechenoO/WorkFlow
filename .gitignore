@@ -1,4 +1,34 @@
+## Python
 __pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+
+## Secrets & Credentials
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.pfx
+secrets.json
+credentials.json
+
+## Database Backups
+*.sql
+*.dump
+!tools/*.sql
+
+## IDE & OS
+.DS_Store
+.idea/
+.vscode/
+node_modules/
+
+## Project Specific
 log/
 .claude/
 CLAUDE.md

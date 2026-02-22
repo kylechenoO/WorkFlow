@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}System - WorkFlow{% endblock %}
+{% block page_title %}System{% endblock %}
+
+{% block content %}
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3">
+  {% if perms_map.users.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:user_list' %}">
+      <i class="bi bi-people"></i> Users
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.groups.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:group_list' %}">
+      <i class="bi bi-collection"></i> Groups
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.roles.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:role_list' %}">
+      <i class="bi bi-person-badge"></i> Roles
+    </a>
+  </li>
+  {% endif %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:timezone' %}">
+      <i class="bi bi-clock"></i> TimeZone
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:ssl' %}">
+      <i class="bi bi-shield-lock"></i> SSL Certs
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:services' %}">
+      <i class="bi bi-hdd-rack"></i> Services
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if request.GET.tab != 'restore' %}active{% endif %}" href="{% url 'system:backup' %}">
+      <i class="bi bi-download"></i> Backup
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if request.GET.tab == 'restore' %}active{% endif %}" href="{% url 'system:backup' %}?tab=restore">
+      <i class="bi bi-arrow-counterclockwise"></i> Restore
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:version' %}">
+      <i class="bi bi-info-circle"></i> Version
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:license' %}">
+      <i class="bi bi-file-text"></i> License
+    </a>
+  </li>
+</ul>
+
+{% if request.GET.tab == 'restore' %}
+<!-- Restore content -->
+<div class="card" style="max-width:480px;">
+  <div class="card-header"><strong>Restore from Backup</strong></div>
+  <div class="card-body">
+    <div class="alert alert-warning py-2 mb-3" style="font-size:13px;">
+      <i class="bi bi-exclamation-triangle"></i>
+      Existing data matching the backup sections will be overwritten.
+      This action cannot be undone.
+    </div>
+    <form method="post" action="{% url 'system:backup_restore' %}" enctype="multipart/form-data"
+          data-confirm-title="Restore Backup"
+          data-confirm-message="Restore from this backup? <strong>Existing data will be overwritten</strong> and cannot be recovered.">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label for="backup_file" class="form-label small">Backup ZIP file</label>
+        <input type="file" class="form-control form-control-sm" name="backup_file" id="backup_file"
+               accept=".zip" required>
+      </div>
+      <button type="button" class="btn btn-warning confirm-trigger">
+        <i class="bi bi-arrow-counterclockwise"></i> Restore
+      </button>
+    </form>
+  </div>
+</div>
+{% else %}
+<!-- Backup content -->
+<div class="card" style="max-width:480px;">
+  <div class="card-header"><strong>Create Backup</strong></div>
+  <div class="card-body">
+    <form method="post" action="{% url 'system:backup_create' %}">
+      {% csrf_token %}
+      <p class="small text-muted mb-3">Select the data types to include in the backup ZIP file.</p>
+
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="include_workflows" id="chk_wf" checked>
+        <label class="form-check-label" for="chk_wf">
+          <i class="bi bi-gear"></i> Workflows
+        </label>
+      </div>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="include_modules" id="chk_mod" checked>
+        <label class="form-check-label" for="chk_mod">
+          <i class="bi bi-puzzle"></i> Modules
+        </label>
+      </div>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="include_accounts" id="chk_acc" checked>
+        <label class="form-check-label" for="chk_acc">
+          <i class="bi bi-people"></i> Users / Groups / Roles
+        </label>
+      </div>
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="include_settings" id="chk_set" checked>
+        <label class="form-check-label" for="chk_set">
+          <i class="bi bi-sliders"></i> System Settings
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-download"></i> Download Backup
+      </button>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Version {{ version.version }} — {{ flow.flow_name }} - WorkFlow{% endblock %}
+{% block page_title %}Version {{ version.version }} — {{ flow.flow_name }}{% endblock %}
+
+{% block top_actions %}
+<a href="{% url 'workflows:flow_versions' flow.flow_name %}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-arrow-left"></i> Back to History
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>
+      <strong>v{{ version.version }}</strong>
+      <span class="text-muted ms-2">{{ version.created_at|date:"Y-m-d H:i:s" }}</span>
+      <span class="text-muted ms-2">by {{ version.changed_by|default:"—" }}</span>
+    </span>
+    {% if perms_map.workflows.edit %}
+    <form method="post" action="{% url 'workflows:flow_version_restore' flow.flow_name version.id %}" class="d-inline"
+          data-confirm-title="Restore Version"
+          data-confirm-message="Restore to version <strong>v{{ version.version }}</strong>? Current state will be saved as a new version first.">
+      {% csrf_token %}
+      <button type="button" class="btn btn-sm btn-outline-warning confirm-trigger">
+        <i class="bi bi-arrow-counterclockwise"></i> Restore This Version
+      </button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="card-body p-0">
+    <pre style="margin:0;padding:16px;font-size:13px;max-height:70vh;overflow:auto;background:#f8f9fa;"><code>{{ content }}</code></pre>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}System - WorkFlow{% endblock %}
+{% block page_title %}System{% endblock %}
+
+{% block content %}
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3">
+  {% if perms_map.users.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:user_list' %}">
+      <i class="bi bi-people"></i> Users
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.groups.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:group_list' %}">
+      <i class="bi bi-collection"></i> Groups
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.roles.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:role_list' %}">
+      <i class="bi bi-person-badge"></i> Roles
+    </a>
+  </li>
+  {% endif %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:timezone' %}">
+      <i class="bi bi-clock"></i> TimeZone
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:ssl' %}">
+      <i class="bi bi-shield-lock"></i> SSL Certs
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:services' %}">
+      <i class="bi bi-hdd-rack"></i> Services
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:backup' %}">
+      <i class="bi bi-download"></i> Backup
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:backup' %}?tab=restore">
+      <i class="bi bi-arrow-counterclockwise"></i> Restore
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:version' %}">
+      <i class="bi bi-info-circle"></i> Version
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{% url 'system:license' %}">
+      <i class="bi bi-file-text"></i> License
+    </a>
+  </li>
+</ul>
+
+<!-- License Content -->
+<div class="card">
+  <div class="card-header"><strong>License</strong></div>
+  <div class="card-body">
+    <pre style="white-space:pre-wrap;font-size:0.85rem;margin:0;color:#212529;">{{ license_text }}</pre>
+  </div>
+</div>
+{% endblock %}

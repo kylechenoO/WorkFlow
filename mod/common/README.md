@@ -470,7 +470,7 @@ Send an HTTP DELETE request.
 
 **Module Path:** `common.FileIO`
 
-File read/write module supporting CSV, JSON, Excel (xlsx), and YAML formats. Auto-detects format from file extension.
+File read/write module supporting CSV, JSON, Excel (xlsx), YAML, and plain text formats. Auto-detects format from file extension.
 
 **Dependencies:** `openpyxl>=3.1.0`, `PyYAML>=6.0.0`, `pandas>=2.0.0` (all included)
 
@@ -478,23 +478,32 @@ File read/write module supporting CSV, JSON, Excel (xlsx), and YAML formats. Aut
 
 #### read
 
-Read a file and return data as a list of dicts.
+Read a file and return data as a list of dicts (or raw string for txt format).
 
 **cfgs:**
 
 | Parameter | Type | Required | Default | Description |
 | --------- | ---- | -------- | ------- | ----------- |
 | file_path | str | Yes | — | Path to input file |
-| format | str | No | auto-detect | `csv`, `json`, `xlsx`, `yaml` |
+| format | str | No | auto-detect | `csv`, `json`, `xlsx`, `yaml`, `txt` |
 | encoding | str | No | `utf-8` | File encoding |
 | sheet | str | No | first sheet | Excel sheet name |
+
+**Supported extensions:** `.csv`, `.json`, `.xlsx`, `.yaml`, `.yml`, `.txt`, `.log`, `.md`, `.conf`, `.ini`, `.cfg`
 
 **Returns:**
 
 ```python
+## Structured formats (csv, json, xlsx, yaml)
 {
     'status': True,
     'data': [list of dicts]
+}
+
+## Text formats (txt, log, md, conf, ini, cfg)
+{
+    'status': True,
+    'data': 'raw string content'
 }
 ```
 
@@ -502,17 +511,19 @@ Read a file and return data as a list of dicts.
 
 #### write
 
-Write a list of dicts to a file.
+Write data to a file (list of dicts for structured formats, or string/list for txt).
 
 **cfgs:**
 
 | Parameter | Type | Required | Default | Description |
 | --------- | ---- | -------- | ------- | ----------- |
 | file_path | str | Yes | — | Path to output file |
-| data | list | Yes | — | List of dicts to write |
-| format | str | No | auto-detect | `csv`, `json`, `xlsx`, `yaml` |
+| data | list/str | Yes | — | List of dicts (structured) or string/list (txt) |
+| format | str | No | auto-detect | `csv`, `json`, `xlsx`, `yaml`, `txt` |
 | encoding | str | No | `utf-8` | File encoding |
 | sheet | str | No | `Sheet1` | Excel sheet name |
+
+> **Note:** For txt format, if `data` is a list, each item is written as a line. If `data` is a string, it is written as-is.
 
 **Returns:**
 
@@ -576,6 +587,32 @@ Write a list of dicts to a file.
       "params": {
         "file_path": "/data/output/report.json",
         "data": "@prev_step.data"
+      }
+    }
+  ]
+}
+```
+
+#### Read and write text files
+
+```json
+{
+  "procedures": [
+    {
+      "name": "read_config",
+      "mod": "common.FileIO",
+      "method": "read",
+      "params": {
+        "file_path": "/etc/app/config.conf"
+      }
+    },
+    {
+      "name": "write_log",
+      "mod": "common.FileIO",
+      "method": "write",
+      "params": {
+        "file_path": "/data/output/report.txt",
+        "data": "@read_config.data"
       }
     }
   ]
@@ -1067,6 +1104,98 @@ Split data into chunks and process each chunk in parallel using the same module 
           ]
         },
         "processes": 4
+      }
+    }
+  ]
+}
+```
+
+---
+
+## Bash
+
+**Module Path:** `common.Bash`
+
+Local shell command executor. Stateless — no connect/disconnect needed.
+
+### Methods
+
+#### run
+
+Execute a shell command and return stdout, stderr, and exit code.
+
+**cfgs:**
+
+| Parameter | Type | Required | Default | Description |
+| --------- | ---- | -------- | ------- | ----------- |
+| cmd | str/list | Yes | — | Command to execute. String for shell commands (pipes, redirects). List for safe argument passing with `shell=false`. |
+| cwd | str | No | `/` | Working directory |
+| env | dict | No | `null` | Environment variables merged with current environment |
+| timeout | int | No | `60` | Timeout in seconds |
+| shell | bool | No | `true` | Use shell interpretation. Set to `false` when passing cmd as a list with untrusted arguments. |
+
+**Returns:**
+
+```python
+{
+    'status': True,          ## True if exit_code == 0
+    'exit_code': 0,
+    'stdout': '...',
+    'stderr': '...'
+}
+```
+
+### Sample Workflow JSON
+
+#### Run a shell command
+
+```json
+{
+  "procedures": [
+    {
+      "name": "check_disk",
+      "mod": "common.Bash",
+      "method": "run",
+      "params": {
+        "cmd": "df -h",
+        "cwd": "/",
+        "timeout": 30
+      }
+    }
+  ]
+}
+```
+
+#### Run with custom environment variables
+
+```json
+{
+  "procedures": [
+    {
+      "name": "run_with_env",
+      "mod": "common.Bash",
+      "method": "run",
+      "params": {
+        "cmd": "echo $MY_VAR",
+        "env": {"MY_VAR": "hello_world"}
+      }
+    }
+  ]
+}
+```
+
+#### Safe argument passing (shell=false)
+
+```json
+{
+  "procedures": [
+    {
+      "name": "safe_ls",
+      "mod": "common.Bash",
+      "method": "run",
+      "params": {
+        "cmd": ["ls", "-la", "/tmp"],
+        "shell": false
       }
     }
   ]

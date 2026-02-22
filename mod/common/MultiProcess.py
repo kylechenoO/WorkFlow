@@ -14,7 +14,7 @@ Responsibilities:
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import buildin pkgs
@@ -216,8 +216,8 @@ class MultiProcess(object):
         as a dict keyed by step name.
 
         Args:
-            steps (list): List of step config dicts, each with name, mod, method, params
-            processes (int): Optional number of worker processes, default len(steps)
+            steps (list): List of step config dicts (default: [])
+            processes (int): Optional number of worker processes (default: 4)
 
         Returns:
             dict: Parallel execution results
@@ -293,12 +293,12 @@ class MultiProcess(object):
         Results are merged back into a single flat list of dicts.
 
         Args:
-            data (list): List of dicts to split
-            data_key (str): Key name in params where each chunk is placed
+            data (ref): List of dicts to split across workers
+            data_key (str): Optional key name in params where each chunk is placed (default: "data")
             mod (str): Target module path
             method (str): Target method name
-            params (dict): Optional additional params for target method
-            processes (int): Optional number of workers / chunks, default 4
+            params (dict): Optional additional params for target method (default: {})
+            processes (int): Optional number of workers (default: 4)
 
         Returns:
             dict: Merged processing results

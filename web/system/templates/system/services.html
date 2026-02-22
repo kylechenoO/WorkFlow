@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+
+{% block title %}System - WorkFlow{% endblock %}
+{% block page_title %}System{% endblock %}
+
+{% block content %}
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3">
+  {% if perms_map.users.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:user_list' %}">
+      <i class="bi bi-people"></i> Users
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.groups.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:group_list' %}">
+      <i class="bi bi-collection"></i> Groups
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.roles.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:role_list' %}">
+      <i class="bi bi-person-badge"></i> Roles
+    </a>
+  </li>
+  {% endif %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:timezone' %}">
+      <i class="bi bi-clock"></i> TimeZone
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:ssl' %}">
+      <i class="bi bi-shield-lock"></i> SSL Certs
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{% url 'system:services' %}">
+      <i class="bi bi-hdd-rack"></i> Services
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:backup' %}">
+      <i class="bi bi-download"></i> Backup
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:backup' %}?tab=restore">
+      <i class="bi bi-arrow-counterclockwise"></i> Restore
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:version' %}">
+      <i class="bi bi-info-circle"></i> Version
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:license' %}">
+      <i class="bi bi-file-text"></i> License
+    </a>
+  </li>
+</ul>
+
+<!-- Services -->
+<div class="row g-3">
+
+  {% for svc_id, svc in services.items %}
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>
+          {% if svc_id == 'backend' %}
+            <i class="bi bi-server"></i> Backend (Flask API)
+          {% else %}
+            <i class="bi bi-display"></i> Frontend (Django UI)
+          {% endif %}
+        </strong>
+        <span class="badge {% if svc.running %}bg-success{% else %}bg-secondary{% endif %}"
+              id="badge-{{ svc_id }}">
+          {% if svc.running %}
+            <i class="bi bi-circle-fill"></i> Running
+          {% else %}
+            <i class="bi bi-circle"></i> Stopped
+          {% endif %}
+        </span>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          <!-- Controls -->
+          <div class="col-12 col-md-4">
+            <div class="d-flex gap-2 flex-wrap mb-3">
+              <button class="btn btn-sm btn-success svc-btn"
+                      data-svc="{{ svc_id }}" data-action="start"
+                      {% if svc.running %}disabled{% endif %}>
+                <i class="bi bi-play-fill"></i> Start
+              </button>
+              <button class="btn btn-sm btn-danger svc-btn"
+                      data-svc="{{ svc_id }}" data-action="stop"
+                      {% if not svc.running %}disabled{% endif %}>
+                <i class="bi bi-stop-fill"></i> Stop
+              </button>
+              <button class="btn btn-sm btn-warning svc-btn"
+                      data-svc="{{ svc_id }}" data-action="restart">
+                <i class="bi bi-arrow-clockwise"></i> Restart
+              </button>
+              <span class="spinner-border spinner-border-sm text-secondary d-none"
+                    id="spinner-{{ svc_id }}" role="status"></span>
+            </div>
+
+            <!-- Config -->
+            {% if svc.config %}
+            <div class="card bg-light border-0">
+              <div class="card-body p-2">
+                <div class="d-flex align-items-center mb-1">
+                  <p class="small text-muted mb-0 fw-semibold">Configuration</p>
+                  <button class="btn btn-sm btn-outline-secondary ms-auto" style="font-size:11px;padding:1px 6px;"
+                          onclick="toggleConfigEdit('{{ svc_id }}')" id="cfg-edit-btn-{{ svc_id }}" title="Edit">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                </div>
+                <table class="table table-sm mb-0 small" id="cfg-table-{{ svc_id }}">
+                  {% for k, v in svc.config.items %}
+                  <tr>
+                    <td class="text-muted pe-2" style="white-space:nowrap;">{{ k }}</td>
+                    <td>
+                      <input type="{% if 'HOST' in k %}text{% else %}number{% endif %}"
+                             class="form-control form-control-sm font-monospace cfg-input"
+                             data-svc="{{ svc_id }}" data-key="{{ k }}" data-original="{{ v }}"
+                             value="{{ v }}" disabled
+                             style="padding:1px 6px;font-size:12px;height:26px;
+                                    background:transparent;border:1px solid transparent;"
+                             {% if 'PORT' in k %}min="1024" max="65535"{% endif %}
+                             {% if 'WORKERS' in k %}min="1" max="32"{% endif %}
+                             {% if 'THREADS' in k %}min="1" max="64"{% endif %}
+                             {% if 'TIMEOUT' in k %}min="10" max="600"{% endif %}>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </table>
+                <div class="d-flex gap-2 mt-2 d-none" id="cfg-actions-{{ svc_id }}">
+                  <button class="btn btn-sm btn-primary" onclick="saveConfig('{{ svc_id }}')">
+                    <i class="bi bi-check-lg"></i> Save
+                  </button>
+                  <button class="btn btn-sm btn-outline-secondary" onclick="cancelConfigEdit('{{ svc_id }}')">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Logs -->
+          <div class="col-12 col-md-8">
+            <div class="d-flex align-items-center mb-1">
+              <span class="small text-muted fw-semibold"><i class="bi bi-terminal"></i> Logs</span>
+              <button class="btn btn-sm btn-outline-secondary ms-auto" style="font-size:11px;padding:1px 6px;"
+                      onclick="refreshPageLogs('{{ svc_id }}')" title="Refresh">
+                <i class="bi bi-arrow-clockwise"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-secondary ms-1 tail-btn" style="font-size:11px;padding:1px 6px;"
+                      data-svc="{{ svc_id }}" onclick="toggleTail('{{ svc_id }}', this)" title="Auto-refresh">
+                <i class="bi bi-broadcast"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-secondary ms-1" style="font-size:11px;padding:1px 6px;"
+                      onclick="expandPageLogs('{{ svc_id }}')" title="Expand">
+                <i class="bi bi-arrows-fullscreen"></i>
+              </button>
+            </div>
+            <div id="page-logs-{{ svc_id }}"
+                 class="bg-dark text-light font-monospace small p-2"
+                 style="overflow-y:auto;white-space:pre-wrap;word-break:break-all;border-radius:4px;font-size:11px;"
+                 >{% for entry in svc.logs %}{{ entry.created_at }}  [{{ entry.level }}]  {{ entry.message }}
+{% endfor %}{% if not svc.logs %}<span class="text-muted">No recent logs.</span>{% endif %}</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- global.json (read-only) -->
+  {% if global_json %}
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <i class="bi bi-file-earmark-code"></i> global.json <small class="text-muted">(read-only)</small>
+      </div>
+      <div class="card-body p-2">
+        <table class="table table-sm mb-0 small">
+          {% for k, v in global_json.items %}
+          <tr>
+            <td class="text-muted pe-2" style="white-space:nowrap;">{{ k }}</td>
+            <td class="font-monospace" style="font-size:12px;">
+              {% if k == 'db.password' %}
+              <span id="db-pw-masked">****</span>
+              <span id="db-pw-value" class="d-none"></span>
+              <button class="btn btn-sm btn-outline-secondary ms-1" style="font-size:10px;padding:1px 5px;"
+                      id="db-pw-toggle" onclick="toggleDbPassword()" title="Show password">
+                <i class="bi bi-eye" id="db-pw-icon"></i>
+              </button>
+              {% else %}
+              {{ v }}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- Password Verification Modal -->
+<div class="modal fade" id="pwVerifyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Verify Password</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted mb-2">Enter your account password to reveal the database password.</p>
+        <input type="password" class="form-control form-control-sm" id="pw-verify-input"
+               placeholder="Your password" autocomplete="off">
+        <div id="pw-verify-error" class="text-danger small mt-1 d-none"></div>
+      </div>
+      <div class="modal-footer py-1">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="pw-verify-btn">
+          <i class="bi bi-unlock"></i> Verify
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Restart Confirmation Modal -->
+<div class="modal fade" id="restartConfirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="restartConfirmTitle">Restart Service</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="restartConfirmBody">
+        Restart service to apply changes?
+      </div>
+      <div class="modal-footer py-1">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Later</button>
+        <button type="button" class="btn btn-sm btn-warning" id="restartConfirmBtn">
+          <i class="bi bi-arrow-clockwise"></i> Restart Now
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Log Expand Modal -->
+<div class="modal fade" id="logExpandModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="logExpandTitle">Service Logs</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-2">
+        <pre id="logExpandPre"
+             style="max-height:75vh;overflow-y:auto;font-size:12px;margin:0;white-space:pre-wrap;word-break:break-all;background:#212529;color:#f8f9fa;padding:12px;border-radius:4px;"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="svcToast" class="toast align-items-center border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="svcToastMsg"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+const BACKEND_API = 'http://' + window.location.hostname + ':{{ services.backend.port }}';
+
+function showToast(msg, ok) {
+  const el = document.getElementById('svcToast');
+  el.className = 'toast align-items-center border-0 text-bg-' + (ok ? 'success' : 'danger');
+  document.getElementById('svcToastMsg').textContent = msg;
+  bootstrap.Toast.getOrCreateInstance(el).show();
+}
+
+function setBadge(svcId, running) {
+  const badge = document.getElementById('badge-' + svcId);
+  if (running) {
+    badge.className = 'badge bg-success';
+    badge.innerHTML = '<i class="bi bi-circle-fill"></i> Running';
+  } else {
+    badge.className = 'badge bg-secondary';
+    badge.innerHTML = '<i class="bi bi-circle"></i> Stopped';
+  }
+  /* update button disabled states */
+  document.querySelectorAll('.svc-btn[data-svc="' + svcId + '"]').forEach(btn => {
+    const action = btn.dataset.action;
+    if (action === 'start')   btn.disabled = running;
+    if (action === 'stop')    btn.disabled = !running;
+    if (action === 'restart') btn.disabled = false;
+  });
+}
+
+async function svcAction(svcId, action) {
+  const spinner = document.getElementById('spinner-' + svcId);
+  spinner.classList.remove('d-none');
+  document.querySelectorAll('.svc-btn[data-svc="' + svcId + '"]').forEach(b => b.disabled = true);
+  try {
+    const resp = await fetch(BACKEND_API + '/service/' + svcId + '/' + action, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'}
+    });
+    const data = await resp.json();
+    if (data.status) {
+      setBadge(svcId, data.running);
+      showToast(data.message || action + ' succeeded', true);
+      refreshPageLogs(svcId);
+    } else {
+      showToast(data.message || data.error || action + ' failed', false);
+      /* re-query actual status */
+      refreshStatus(svcId);
+    }
+  } catch(e) {
+    showToast('Request failed: ' + e, false);
+    refreshStatus(svcId);
+  } finally {
+    spinner.classList.add('d-none');
+  }
+}
+
+async function refreshStatus(svcId) {
+  try {
+    const resp = await fetch(BACKEND_API + '/service/' + svcId + '/status');
+    const data = await resp.json();
+    setBadge(svcId, data.running);
+  } catch(e) { /* ignore */ }
+}
+
+function _formatLogs(logs) {
+  return logs.map(function(e) { return e.created_at + '  [' + e.level + ']  ' + e.message; }).join('\n');
+}
+
+async function _fetchLogs(svcId) {
+  const resp = await fetch('/system/services/' + svcId + '/logs/', {
+    headers: {'X-CSRFToken': CSRF}
+  });
+  return await resp.json();
+}
+
+/* refresh the inline page log area */
+async function refreshPageLogs(svcId) {
+  try {
+    const data = await _fetchLogs(svcId);
+    const box = document.getElementById('page-logs-' + svcId);
+    if (data.logs && data.logs.length) {
+      box.textContent = _formatLogs(data.logs);
+    } else {
+      box.innerHTML = '<span class="text-muted">No recent logs.</span>';
+    }
+    box.scrollTop = box.scrollHeight;
+  } catch(e) { /* ignore */ }
+}
+
+/* expand inline page logs into a large modal */
+function expandPageLogs(svcId) {
+  var box = document.getElementById('page-logs-' + svcId);
+  var content = box ? box.textContent : '';
+  var label = svcId === 'backend' ? 'Backend' : 'Frontend';
+  document.getElementById('logExpandTitle').textContent = label + ' Logs';
+  document.getElementById('logExpandPre').textContent = content || 'No recent logs.';
+  new bootstrap.Modal(document.getElementById('logExpandModal')).show();
+}
+
+/* attach button handlers */
+document.querySelectorAll('.svc-btn').forEach(btn => {
+  btn.addEventListener('click', () => svcAction(btn.dataset.svc, btn.dataset.action));
+});
+
+/* live tail toggle */
+var _tailTimers = {};
+
+function toggleTail(svcId, btn) {
+  if (_tailTimers[svcId]) {
+    clearInterval(_tailTimers[svcId]);
+    _tailTimers[svcId] = null;
+    btn.classList.remove('btn-primary');
+    btn.classList.add('btn-outline-secondary');
+  } else {
+    _tailTimers[svcId] = setInterval(function() { refreshPageLogs(svcId); }, 3000);
+    btn.classList.remove('btn-outline-secondary');
+    btn.classList.add('btn-primary');
+    refreshPageLogs(svcId);
+  }
+}
+
+/* align log area height to config form */
+document.querySelectorAll('.col-md-4').forEach(function(col) {
+  var configCard = col.querySelector('.card.bg-light');
+  var logBox = col.parentElement.querySelector('[id^="page-logs-"]');
+  if (!logBox || !configCard) return;
+  var configBottom = configCard.getBoundingClientRect().bottom;
+  var logBoxTop = logBox.getBoundingClientRect().top;
+  var target = configBottom - logBoxTop;
+  if (target > 80) logBox.style.height = Math.round(target) + 'px';
+});
+
+/* scroll all log areas to bottom on load */
+document.querySelectorAll('[id^="page-logs-"]').forEach(function(box) {
+  box.scrollTop = box.scrollHeight;
+});
+
+/* ---- Config editing ---- */
+
+function toggleConfigEdit(svcId) {
+  var inputs = document.querySelectorAll('#cfg-table-' + svcId + ' .cfg-input');
+  var actions = document.getElementById('cfg-actions-' + svcId);
+  var editBtn = document.getElementById('cfg-edit-btn-' + svcId);
+  inputs.forEach(function(inp) {
+    inp.disabled = false;
+    inp.style.border = '1px solid #ced4da';
+    inp.style.background = '#fff';
+  });
+  actions.classList.remove('d-none');
+  editBtn.classList.add('d-none');
+}
+
+function cancelConfigEdit(svcId) {
+  var inputs = document.querySelectorAll('#cfg-table-' + svcId + ' .cfg-input');
+  var actions = document.getElementById('cfg-actions-' + svcId);
+  var editBtn = document.getElementById('cfg-edit-btn-' + svcId);
+  inputs.forEach(function(inp) {
+    inp.value = inp.dataset.original;
+    inp.disabled = true;
+    inp.style.border = '1px solid transparent';
+    inp.style.background = 'transparent';
+  });
+  actions.classList.add('d-none');
+  editBtn.classList.remove('d-none');
+}
+
+var _restartSvcId = null;
+
+async function saveConfig(svcId) {
+  var inputs = document.querySelectorAll('#cfg-table-' + svcId + ' .cfg-input');
+  var payload = {};
+  var hasChange = false;
+  inputs.forEach(function(inp) {
+    payload[inp.dataset.key] = inp.value;
+    if (inp.value !== inp.dataset.original) hasChange = true;
+  });
+
+  if (!hasChange) {
+    cancelConfigEdit(svcId);
+    return;
+  }
+
+  try {
+    var resp = await fetch('/system/services/' + svcId + '/config/update/', {
+      method: 'POST',
+      headers: {'X-CSRFToken': CSRF, 'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    var data = await resp.json();
+    if (data.status) {
+      showToast(data.message || 'Configuration saved', true);
+      /* update original values */
+      inputs.forEach(function(inp) { inp.dataset.original = inp.value; });
+      cancelConfigEdit(svcId);
+      /* ask to restart via modal */
+      var label = svcId === 'backend' ? 'Backend' : 'Frontend';
+      document.getElementById('restartConfirmTitle').textContent = 'Restart ' + label;
+      document.getElementById('restartConfirmBody').textContent = 'Restart ' + label + ' service to apply changes?';
+      _restartSvcId = svcId;
+      new bootstrap.Modal(document.getElementById('restartConfirmModal')).show();
+    } else {
+      showToast(data.error || 'Failed to save', false);
+    }
+  } catch(e) {
+    showToast('Request failed: ' + e, false);
+  }
+}
+
+document.getElementById('restartConfirmBtn').addEventListener('click', function() {
+  bootstrap.Modal.getInstance(document.getElementById('restartConfirmModal')).hide();
+  if (_restartSvcId) {
+    svcAction(_restartSvcId, 'restart');
+    _restartSvcId = null;
+  }
+});
+
+/* ---- db.password reveal ---- */
+
+var _dbPwRevealed = false;
+
+function toggleDbPassword() {
+  if (_dbPwRevealed) {
+    /* hide it again */
+    document.getElementById('db-pw-masked').textContent = '****';
+    document.getElementById('db-pw-masked').classList.remove('d-none');
+    document.getElementById('db-pw-value').classList.add('d-none');
+    document.getElementById('db-pw-icon').className = 'bi bi-eye';
+    _dbPwRevealed = false;
+  } else {
+    /* show password verification modal */
+    document.getElementById('pw-verify-input').value = '';
+    document.getElementById('pw-verify-error').classList.add('d-none');
+    new bootstrap.Modal(document.getElementById('pwVerifyModal')).show();
+    setTimeout(function() { document.getElementById('pw-verify-input').focus(); }, 300);
+  }
+}
+
+document.getElementById('pw-verify-btn').addEventListener('click', async function() {
+  var pwd = document.getElementById('pw-verify-input').value;
+  var errEl = document.getElementById('pw-verify-error');
+  if (!pwd) {
+    errEl.textContent = 'Password is required';
+    errEl.classList.remove('d-none');
+    return;
+  }
+  try {
+    var resp = await fetch('/system/verify-password/', {
+      method: 'POST',
+      headers: {'X-CSRFToken': CSRF, 'Content-Type': 'application/json'},
+      body: JSON.stringify({password: pwd})
+    });
+    var data = await resp.json();
+    if (data.status) {
+      bootstrap.Modal.getInstance(document.getElementById('pwVerifyModal')).hide();
+      document.getElementById('db-pw-masked').classList.add('d-none');
+      document.getElementById('db-pw-value').textContent = data.value;
+      document.getElementById('db-pw-value').classList.remove('d-none');
+      document.getElementById('db-pw-icon').className = 'bi bi-eye-slash';
+      _dbPwRevealed = true;
+    } else {
+      errEl.textContent = data.error || 'Verification failed';
+      errEl.classList.remove('d-none');
+    }
+  } catch(e) {
+    errEl.textContent = 'Request failed';
+    errEl.classList.remove('d-none');
+  }
+});
+
+/* allow Enter key to submit password */
+document.getElementById('pw-verify-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') document.getElementById('pw-verify-btn').click();
+});
+
+/* align log box bottom edge to configuration card bottom edge */
+window.addEventListener('load', function() {
+  document.querySelectorAll('.card.bg-light.border-0').forEach(function(cfgCard) {
+    var row = cfgCard.closest('.row');
+    if (!row) return;
+    var logBox = row.querySelector('[id^="page-logs-"]');
+    if (!logBox) return;
+    var cfgBottom = cfgCard.getBoundingClientRect().bottom;
+    var logTop = logBox.getBoundingClientRect().top;
+    var h = Math.round(cfgBottom - logTop);
+    if (h > 40) {
+      logBox.style.height = h + 'px';
+      logBox.style.maxHeight = h + 'px';
+    }
+  });
+});
+
+</script>
+{% endblock %}

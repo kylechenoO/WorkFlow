@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+
+{% block title %}OpenAPI - WorkFlow{% endblock %}
+{% block page_title %}OpenAPI{% endblock %}
+
+{% block content %}
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" id="apiTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if active_tab == 'tokens' %}active{% endif %}" id="tab-tokens"
+            data-bs-toggle="tab" data-bs-target="#pane-tokens" type="button" role="tab">
+      <i class="bi bi-key"></i> Token Management
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if active_tab == 'samples' %}active{% endif %}" id="tab-samples"
+            data-bs-toggle="tab" data-bs-target="#pane-samples" type="button" role="tab">
+      <i class="bi bi-code-square"></i> API &amp; Modules
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+
+  <!-- Token Management -->
+  <div class="tab-pane fade {% if active_tab == 'tokens' %}show active{% endif %}" id="pane-tokens" role="tabpanel">
+
+    <!-- Create Key Form -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Create API Key</strong></div>
+      <div class="card-body">
+        <form method="post" action="{% url 'system:api_key_create' %}" class="row g-2 align-items-end">
+          {% csrf_token %}
+          <div class="col-md-5">
+            <label class="form-label small">Key Name</label>
+            <input type="text" name="name" class="form-control form-control-sm"
+                   placeholder="e.g. backup-script" maxlength="128" required>
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-primary">
+              <i class="bi bi-plus-lg"></i> Create Key
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    {% if new_api_key %}
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+      <i class="bi bi-exclamation-triangle"></i> <strong>Copy your new API key now — it will not be shown again:</strong>
+      <div class="d-flex align-items-center gap-2 mt-2">
+        <code id="new-key-text" style="font-size:0.9rem;word-break:break-all;flex:1;">{{ new_api_key }}</code>
+        <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="copy-key-btn" onclick="copyApiKey()">
+          <i class="bi bi-clipboard"></i> Copy
+        </button>
+      </div>
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <!-- Keys Table -->
+    <div class="card">
+      <div class="card-header"><strong>API Keys</strong></div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th style="width:110px;">Prefix</th>
+              <th style="width:120px;">Created By</th>
+              <th style="width:160px;">Last Used</th>
+              <th style="width:80px;">Status</th>
+              <th style="width:130px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for key in keys %}
+            <tr>
+              <td>{{ key.name }}</td>
+              <td><code>{{ key.key_prefix }}…</code></td>
+              <td>{{ key.created_by }}</td>
+              <td><small class="text-muted">{% if key.last_used %}{{ key.last_used|date:"Y-m-d H:i:s" }}{% else %}—{% endif %}</small></td>
+              <td>
+                {% if key.enabled %}
+                <span class="badge bg-success">Enabled</span>
+                {% else %}
+                <span class="badge bg-secondary">Disabled</span>
+                {% endif %}
+              </td>
+              <td>
+                <form method="post" action="{% url 'system:api_key_toggle' key.id %}" class="d-inline">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm {% if key.enabled %}btn-outline-warning{% else %}btn-outline-success{% endif %}"
+                          style="font-size:11px;padding:1px 8px;">
+                    {% if key.enabled %}Disable{% else %}Enable{% endif %}
+                  </button>
+                </form>
+                <form method="post" action="{% url 'system:api_key_delete' key.id %}" class="d-inline"
+                      data-confirm-title="Delete API Key"
+                      data-confirm-message="Delete key <strong>{{ key.name|escapejs }}</strong>? This cannot be undone.">
+                  {% csrf_token %}
+                  <button type="button" class="btn btn-sm btn-outline-danger confirm-trigger" style="font-size:11px;padding:1px 8px;">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" class="text-center text-muted py-4">No API keys yet.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- API & Modules -->
+  <div class="tab-pane fade {% if active_tab == 'samples' %}show active{% endif %}" id="pane-samples" role="tabpanel">
+
+    <div class="alert alert-info py-2 mb-3" style="font-size:13px;">
+      <i class="bi bi-info-circle"></i>
+      Base URL: <code>http://127.0.0.1:5001</code> &nbsp;|&nbsp;
+      Auth header: <code>X-Api-Key: &lt;your-key&gt;</code>
+    </div>
+
+    <div class="accordion" id="apiSamples">
+
+      <!-- Workflow CRUD -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#acc-flows">
+            <i class="bi bi-gear me-2"></i> Workflow CRUD
+          </button>
+        </h2>
+        <div id="acc-flows" class="accordion-collapse collapse show" data-bs-parent="#apiSamples">
+          <div class="accordion-body p-3">
+
+            <p class="small fw-semibold mb-1">List all workflows</p>
+            <pre class="bg-light p-2 rounded mb-3" style="font-size:12px;">curl -H "X-Api-Key: &lt;your-key&gt;" \
+  http://127.0.0.1:5001/flow</pre>
+
+            <p class="small fw-semibold mb-1">Get a workflow</p>
+            <pre class="bg-light p-2 rounded mb-3" style="font-size:12px;">curl -H "X-Api-Key: &lt;your-key&gt;" \
+  http://127.0.0.1:5001/flow/&lt;name&gt;</pre>
+
+            <p class="small fw-semibold mb-1">Create a workflow</p>
+            <pre class="bg-light p-2 rounded mb-3" style="font-size:12px;">curl -X POST \
+  -H "X-Api-Key: &lt;your-key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"flow_name":"my_flow","procedures":{"procedures":[]}}' \
+  http://127.0.0.1:5001/flow</pre>
+
+            <p class="small fw-semibold mb-1">Update a workflow</p>
+            <pre class="bg-light p-2 rounded mb-3" style="font-size:12px;">curl -X PUT \
+  -H "X-Api-Key: &lt;your-key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"procedures":{"procedures":[]}}' \
+  http://127.0.0.1:5001/flow/&lt;name&gt;</pre>
+
+            <p class="small fw-semibold mb-1">Delete a workflow</p>
+            <pre class="bg-light p-2 rounded mb-3" style="font-size:12px;">curl -X DELETE \
+  -H "X-Api-Key: &lt;your-key&gt;" \
+  http://127.0.0.1:5001/flow/&lt;name&gt;</pre>
+
+            <p class="small fw-semibold mb-1">Enable a workflow</p>
+            <pre class="bg-light p-2 rounded mb-3" style="font-size:12px;">curl -X PUT \
+  -H "X-Api-Key: &lt;your-key&gt;" \
+  http://127.0.0.1:5001/flow/&lt;name&gt;/enable</pre>
+
+            <p class="small fw-semibold mb-1">Disable a workflow</p>
+            <pre class="bg-light p-2 rounded mb-3" style="font-size:12px;">curl -X PUT \
+  -H "X-Api-Key: &lt;your-key&gt;" \
+  http://127.0.0.1:5001/flow/&lt;name&gt;/disable</pre>
+
+            <p class="small fw-semibold mb-1">Rename a workflow</p>
+            <pre class="bg-light p-2 rounded" style="font-size:12px;">curl -X PUT \
+  -H "X-Api-Key: &lt;your-key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"new_name":"new_flow_name"}' \
+  http://127.0.0.1:5001/flow/&lt;name&gt;/rename</pre>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Run & Monitor -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#acc-runs">
+            <i class="bi bi-play-circle me-2"></i> Run &amp; Monitor
+          </button>
+        </h2>
+        <div id="acc-runs" class="accordion-collapse collapse" data-bs-parent="#apiSamples">
+          <div class="accordion-body p-3">
+
+            <p class="small fw-semibold mb-1">Run a workflow</p>
+            <pre class="bg-light p-2 rounded mb-3" style="font-size:12px;">curl -X POST \
+  -H "X-Api-Key: &lt;your-key&gt;" \
+  http://127.0.0.1:5001/flow/&lt;name&gt;/run</pre>
+
+            <p class="small fw-semibold mb-1">List runs for a workflow</p>
+            <pre class="bg-light p-2 rounded mb-3" style="font-size:12px;">curl -H "X-Api-Key: &lt;your-key&gt;" \
+  http://127.0.0.1:5001/flow/&lt;name&gt;/runs</pre>
+
+            <p class="small fw-semibold mb-1">Get run detail</p>
+            <pre class="bg-light p-2 rounded" style="font-size:12px;">curl -H "X-Api-Key: &lt;your-key&gt;" \
+  http://127.0.0.1:5001/run/&lt;run_id&gt;</pre>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Backup & Restore -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#acc-backup">
+            <i class="bi bi-archive me-2"></i> Backup &amp; Restore
+          </button>
+        </h2>
+        <div id="acc-backup" class="accordion-collapse collapse" data-bs-parent="#apiSamples">
+          <div class="accordion-body p-3">
+
+            <p class="small fw-semibold mb-1">Download full backup (ZIP)</p>
+            <pre class="bg-light p-2 rounded mb-3" style="font-size:12px;">curl -H "X-Api-Key: &lt;your-key&gt;" \
+  http://127.0.0.1:5001/backup \
+  -o backup.zip</pre>
+
+            <p class="small fw-semibold mb-1">Restore from backup (ZIP)</p>
+            <pre class="bg-light p-2 rounded" style="font-size:12px;">curl -X POST \
+  -H "X-Api-Key: &lt;your-key&gt;" \
+  -F "file=@backup.zip" \
+  http://127.0.0.1:5001/restore</pre>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Module Reference -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#acc-modules">
+            <i class="bi bi-puzzle me-2"></i> Module Reference
+          </button>
+        </h2>
+        <div id="acc-modules" class="accordion-collapse collapse" data-bs-parent="#apiSamples">
+          <div class="accordion-body p-3">
+
+            <p class="text-muted small mb-3">All modules follow the same step format: <code>{"name", "mod", "method", "params"}</code>. Data flows between steps via <code>@step_name.key</code> references.</p>
+
+            <!-- How to call a module via API -->
+            <div class="card mb-3 border-info">
+              <div class="card-header bg-light py-2"><strong><i class="bi bi-terminal me-1"></i>How to call any module method via the Flask API</strong></div>
+              <div class="card-body py-2 px-3">
+                <p class="small mb-2">1. Create a workflow with the module step:</p>
+                <pre class="bg-light p-2 rounded mb-2" style="font-size:11px;">curl -X POST \
+  -H "X-Api-Key: &lt;your-key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "flow_name": "my_http_test",
+    "procedures": {
+      "procedures": [
+        {
+          "name": "fetch",
+          "mod": "common.Http",
+          "method": "get",
+          "params": {"url": "https://httpbin.org/json"}
+        }
+      ]
+    }
+  }' \
+  http://127.0.0.1:5001/flow</pre>
+                <p class="small mb-2">2. Run the workflow and get results:</p>
+                <pre class="bg-light p-2 rounded mb-0" style="font-size:11px;">curl -X POST \
+  -H "X-Api-Key: &lt;your-key&gt;" \
+  http://127.0.0.1:5001/flow/my_http_test/run
+
+# Then get the result using the run_id from above:
+curl -H "X-Api-Key: &lt;your-key&gt;" \
+  http://127.0.0.1:5001/run/&lt;run_id&gt;</pre>
+              </div>
+            </div>
+
+            <!-- Sub-accordion for each module (dynamically generated) -->
+            <div class="accordion" id="modAccordion">
+
+            {% for cat_name, cat_data in modules_registry.items %}
+              {% for mod_name, mod_data in cat_data.modules.items %}
+              <div class="accordion-item border-0 border-bottom">
+                <h2 class="accordion-header">
+                  <button class="accordion-button collapsed py-2 bg-light" type="button" data-bs-toggle="collapse" data-bs-target="#mod-{{ cat_name }}-{{ mod_name|lower }}">
+                    <code class="me-2">{{ cat_name }}.{{ mod_name }}</code> <span class="text-muted small">— {{ mod_data.description }}</span>
+                  </button>
+                </h2>
+                <div id="mod-{{ cat_name }}-{{ mod_name|lower }}" class="accordion-collapse collapse" data-bs-parent="#modAccordion">
+                  <div class="accordion-body pt-2">
+                    {% for method_name, method_data in mod_data.methods.items %}
+                    <div class="mb-3 pb-2 {% if not forloop.last %}border-bottom{% endif %}">
+                      <p class="fw-semibold mb-1" style="font-size:13px;">
+                        <code>{{ cat_name }}.{{ mod_name }}.{{ method_name }}({% for p_name, p_data in method_data.params.items %}{% if not forloop.first %}, {% endif %}{% if p_data.required %}{{ p_name }}{% else %}<span class="text-muted">{{ p_name }}</span>{% endif %}{% endfor %})</code>
+                      </p>
+                      <p class="text-muted small mb-2">{{ method_data.label }}</p>
+                      {% if method_data.params %}
+                      <table class="table table-sm table-bordered mb-2" style="font-size:11px;">
+                        <thead class="table-light"><tr><th style="width:22%;">Param</th><th style="width:12%;">Type</th><th style="width:10%;">Required</th><th>Description</th></tr></thead>
+                        <tbody>
+                          {% for p_name, p_data in method_data.params.items %}
+                          <tr>
+                            <td><code>{% if p_data.required %}<strong>{{ p_name }}</strong>{% else %}{{ p_name }}{% endif %}</code></td>
+                            <td><span class="badge bg-light text-dark border">{{ p_data.type }}</span></td>
+                            <td>{% if p_data.required %}<span class="text-danger">Yes</span>{% else %}<span class="text-muted">No</span>{% endif %}</td>
+                            <td>{{ p_data.desc }}{% if p_data.default_display %} <span class="text-muted">(default: <code>{{ p_data.default_display }}</code>)</span>{% endif %}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                      {% else %}
+                      <p class="text-muted small mb-2" style="font-size:11px;">No parameters required.</p>
+                      {% endif %}
+                    </div>
+                    {% endfor %}
+                    {% if mod_data.first_method %}
+                    <pre class="bg-light p-2 rounded mb-0" style="font-size:11px;">{
+  "name": "step_name",
+  "mod": "{{ cat_name }}.{{ mod_name }}",
+  "method": "{{ mod_data.first_method }}",
+  "params": {}
+}</pre>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            {% endfor %}
+
+            </div><!-- /modAccordion -->
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /accordion -->
+  </div>
+
+</div><!-- /tab-content -->
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function copyApiKey() {
+  var keyEl = document.getElementById('new-key-text');
+  if (!keyEl) return;
+  navigator.clipboard.writeText(keyEl.textContent.trim()).then(function() {
+    var btn = document.getElementById('copy-key-btn');
+    btn.innerHTML = '<i class="bi bi-check"></i> Copied!';
+    setTimeout(function() { btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy'; }, 2000);
+  });
+}
+</script>
+{% endblock %}

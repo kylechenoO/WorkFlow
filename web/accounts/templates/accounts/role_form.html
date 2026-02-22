@@ -4,15 +4,24 @@
 {% block page_title %}{{ form_title }}{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width: 500px;">
+<div class="card" style="max-width: 700px;">
   <div class="card-body">
     <form method="post">
       {% csrf_token %}
 
       {% for field in form %}
+      {% if field.name == 'permissions' %}
+      <!-- Permissions rendered as grouped grid -->
+      {% else %}
       <div class="mb-3">
         <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+        {% if is_protected and field.name == 'name' %}
+        <input type="text" class="form-control" value="{{ field.value }}" readonly disabled>
+        <input type="hidden" name="name" value="{{ field.value }}">
+        <div class="form-text">Default role name cannot be changed.</div>
+        {% else %}
         {{ field }}
+        {% endif %}
         {% if field.help_text %}
         <div class="form-text">{{ field.help_text }}</div>
         {% endif %}
@@ -20,7 +29,43 @@
         <div class="text-danger small mt-1">{{ field.errors.0 }}</div>
         {% endif %}
       </div>
+      {% endif %}
       {% endfor %}
+
+      <!-- Permissions section -->
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Permissions</label>
+        {% if is_protected and form.instance.name == 'admin' %}
+        <div class="form-text mb-2">Admin role has all permissions (read-only).</div>
+        {% endif %}
+        <div class="border rounded p-3" style="background:#fafafa; max-height:400px; overflow-y:auto;">
+          {% for page, actions in permission_groups.items %}
+          <div class="mb-2">
+            <div class="fw-semibold text-uppercase" style="font-size:11px; color:#6c757d;">{{ page }}</div>
+            <div class="d-flex flex-wrap gap-3 ms-2 mt-1">
+              {% for perm in actions %}
+              <div class="form-check">
+                <input type="checkbox" name="permissions" value="{{ perm.id }}"
+                       class="form-check-input"
+                       id="perm_{{ perm.id }}"
+                       {% if perm.id in selected_perm_ids %}checked{% endif %}
+                       {% if is_protected and form.instance.name == 'admin' %}disabled{% endif %}>
+                <label class="form-check-label" for="perm_{{ perm.id }}" style="font-size:12px;">
+                  {{ perm.action }}
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% if is_protected and form.instance.name == 'admin' %}
+        <!-- Hidden inputs for admin so all permissions are submitted -->
+        {% for perm_id in selected_perm_ids %}
+        <input type="hidden" name="permissions" value="{{ perm_id }}">
+        {% endfor %}
+        {% endif %}
+      </div>
 
       <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary">Save</button>

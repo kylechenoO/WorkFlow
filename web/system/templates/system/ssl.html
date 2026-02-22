@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block title %}System - WorkFlow{% endblock %}
+{% block page_title %}System{% endblock %}
+
+{% block content %}
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3">
+  {% if perms_map.users.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:user_list' %}">
+      <i class="bi bi-people"></i> Users
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.groups.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:group_list' %}">
+      <i class="bi bi-collection"></i> Groups
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.roles.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:role_list' %}">
+      <i class="bi bi-person-badge"></i> Roles
+    </a>
+  </li>
+  {% endif %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:timezone' %}">
+      <i class="bi bi-clock"></i> TimeZone
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{% url 'system:ssl' %}">
+      <i class="bi bi-shield-lock"></i> SSL Certs
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:services' %}">
+      <i class="bi bi-hdd-rack"></i> Services
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:backup' %}">
+      <i class="bi bi-download"></i> Backup
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:backup' %}?tab=restore">
+      <i class="bi bi-arrow-counterclockwise"></i> Restore
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:version' %}">
+      <i class="bi bi-info-circle"></i> Version
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:license' %}">
+      <i class="bi bi-file-text"></i> License
+    </a>
+  </li>
+</ul>
+
+<!-- Sub-tabs -->
+<ul class="nav nav-pills mb-3" id="sslSubTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <a class="nav-link {% if active_tab == 'server' %}active{% endif %}"
+       href="{% url 'system:ssl' %}?tab=server">
+      <i class="bi bi-lock"></i> Server Certificate
+    </a>
+  </li>
+  <li class="nav-item" role="presentation">
+    <a class="nav-link {% if active_tab == 'ca' %}active{% endif %}"
+       href="{% url 'system:ssl' %}?tab=ca">
+      <i class="bi bi-patch-check"></i> Trusted CA Certificates
+    </a>
+  </li>
+</ul>
+
+{% if active_tab == 'ca' %}
+<!-- CA Certificates -->
+<div class="row g-3">
+  <!-- Upload CA cert -->
+  <div class="col-12 col-lg-5">
+    <div class="card">
+      <div class="card-header"><strong>Upload CA Certificate</strong></div>
+      <div class="card-body">
+        <p class="small text-muted mb-3">
+          Upload CA certificates to trust for outbound connections
+          (MongoDB, Elasticsearch, etc.). Accepted formats: .crt, .pem, .cer
+        </p>
+        <form method="post" action="{% url 'system:ssl_ca_upload' %}" enctype="multipart/form-data">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label for="ca_file" class="form-label small">CA Certificate File</label>
+            <input type="file" class="form-control form-control-sm" name="ca_file" id="ca_file"
+                   accept=".crt,.pem,.cer" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-upload"></i> Upload CA Cert
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- CA cert list -->
+  <div class="col-12 col-lg-7">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Installed CA Certificates</strong>
+        <span class="badge bg-secondary">{{ ca_certs|length }}</span>
+      </div>
+      <div class="card-body p-0">
+        {% if ca_certs %}
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Filename</th>
+              <th>Common Name</th>
+              <th>Expires</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cert in ca_certs %}
+            <tr>
+              <td class="small font-monospace">{{ cert.filename }}</td>
+              <td class="small">{{ cert.cn|default:"-" }}</td>
+              <td class="small">{{ cert.expiry|default:"-" }}</td>
+              <td class="text-end">
+                <form method="post"
+                      action="{% url 'system:ssl_ca_delete' cert.filename %}"
+                      data-confirm-title="Delete CA Certificate"
+                      data-confirm-message="Delete CA certificate <strong>{{ cert.filename }}</strong>? This cannot be undone.">
+                  {% csrf_token %}
+                  <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 confirm-trigger">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted small p-3 mb-0">No CA certificates installed.</p>
+        {% endif %}
+      </div>
+      {% if ca_bundle_path %}
+      <div class="card-footer small text-muted">
+        CA directory: <code>{{ ca_bundle_path }}</code>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% else %}
+<!-- Server Certificate -->
+<div class="row g-3">
+  <!-- Status card -->
+  <div class="col-12 col-lg-5">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>HTTPS Status</strong>
+        {% if ssl_server_enabled %}
+        <span class="badge bg-success"><i class="bi bi-lock-fill"></i> HTTPS Enabled</span>
+        {% else %}
+        <span class="badge bg-secondary"><i class="bi bi-unlock"></i> HTTP Only</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if server_cert_info and server_cert_info.valid %}
+        <table class="table table-sm mb-3">
+          <tr><th class="text-muted small" style="width:120px;">Common Name</th><td class="small">{{ server_cert_info.cn|default:"-" }}</td></tr>
+          <tr><th class="text-muted small">Expires</th><td class="small">{{ server_cert_info.expiry|default:"-" }}</td></tr>
+          <tr><th class="text-muted small">Cert Path</th><td class="small font-monospace" style="word-break:break-all;">{{ ssl_server_cert_path }}</td></tr>
+        </table>
+        <div class="d-flex gap-2 flex-wrap">
+          {% if ssl_server_enabled %}
+          <form method="post" action="{% url 'system:ssl_server_toggle' %}"
+                data-confirm-title="Disable HTTPS"
+                data-confirm-message="Disable HTTPS and restart services in HTTP mode?">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="disable">
+            <button type="button" class="btn btn-warning btn-sm confirm-trigger">
+              <i class="bi bi-unlock"></i> Disable HTTPS
+            </button>
+          </form>
+          {% else %}
+          <form method="post" action="{% url 'system:ssl_server_toggle' %}"
+                data-confirm-title="Enable HTTPS"
+                data-confirm-message="Enable HTTPS and restart services with the uploaded certificate?">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="enable">
+            <button type="button" class="btn btn-success btn-sm confirm-trigger">
+              <i class="bi bi-lock"></i> Enable HTTPS
+            </button>
+          </form>
+          {% endif %}
+          <form method="post" action="{% url 'system:ssl_server_delete' %}"
+                data-confirm-title="Delete Server Certificate"
+                data-confirm-message="Delete the server certificate and key? HTTPS will be disabled.">
+            {% csrf_token %}
+            <button type="button" class="btn btn-outline-danger btn-sm confirm-trigger">
+              <i class="bi bi-trash"></i> Delete Cert
+            </button>
+          </form>
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">
+          No server certificate installed. Upload a certificate and key to enable HTTPS.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload card -->
+  <div class="col-12 col-lg-5">
+    <div class="card">
+      <div class="card-header"><strong>Upload Server Certificate</strong></div>
+      <div class="card-body">
+        <p class="small text-muted mb-3">
+          Upload a PEM-format certificate and private key to serve HTTPS on both
+          the backend (port {{ backend_port|default:'5001' }}) and frontend (port {{ frontend_port|default:'5002' }}).
+          After uploading, click <strong>Enable HTTPS</strong> and services will restart automatically.
+        </p>
+        <form method="post" action="{% url 'system:ssl_server_upload' %}" enctype="multipart/form-data">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label for="cert_file" class="form-label small">Certificate File <span class="text-muted">(.crt / .pem)</span></label>
+            <input type="file" class="form-control form-control-sm" name="cert_file" id="cert_file"
+                   accept=".crt,.pem,.cer" required>
+          </div>
+          <div class="mb-3">
+            <label for="key_file" class="form-label small">Private Key File <span class="text-muted">(.key / .pem)</span></label>
+            <input type="file" class="form-control form-control-sm" name="key_file" id="key_file"
+                   accept=".key,.pem" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-upload"></i> Upload Certificate
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

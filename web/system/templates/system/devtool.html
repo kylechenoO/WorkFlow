@@ -1,0 +1,415 @@
+{% extends "base.html" %}
+
+{% block title %}Devtool - WorkFlow{% endblock %}
+{% block page_title %}Devtool{% endblock %}
+
+{% block content %}
+<!-- Devtool Sub-Tabs -->
+<ul class="nav nav-tabs mb-0" id="devtoolTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="tab-rest" data-bs-toggle="tab"
+            data-bs-target="#pane-rest" type="button" role="tab">
+      <i class="bi bi-send"></i> RESTFultool
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-sql" data-bs-toggle="tab"
+            data-bs-target="#pane-sql" type="button" role="tab">
+      <i class="bi bi-database"></i> SQLtool
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content border border-top-0 bg-white p-3 mb-4">
+
+  <!-- RESTFultool Pane -->
+  <div class="tab-pane fade show active" id="pane-rest" role="tabpanel">
+
+    <!-- Request Builder -->
+    <div class="row g-2 mb-3 align-items-center">
+      <div class="col-auto">
+        <select id="rest-method" class="form-select form-select-sm" style="width:110px;">
+          <option>GET</option>
+          <option>POST</option>
+          <option>PUT</option>
+          <option>DELETE</option>
+          <option>PATCH</option>
+          <option>HEAD</option>
+          <option>OPTIONS</option>
+        </select>
+      </div>
+      <div class="col">
+        <input id="rest-url" type="text" class="form-control form-control-sm font-monospace"
+               placeholder="https://example.com/api/endpoint">
+      </div>
+      <div class="col-auto d-flex gap-1">
+        <button id="rest-send" class="btn btn-sm btn-primary">
+          <i class="bi bi-send"></i> Send
+        </button>
+        <button id="rest-clear" class="btn btn-sm btn-outline-secondary">Clear</button>
+        <button id="rest-export" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-download"></i> Export
+        </button>
+      </div>
+    </div>
+
+    <div class="row g-2 mb-3">
+      <div class="col-md-6">
+        <label class="form-label small fw-semibold">Headers <span class="text-muted fw-normal">(JSON object)</span></label>
+        <textarea id="rest-headers" class="form-control form-control-sm font-monospace" rows="4"
+                  placeholder='{"Content-Type": "application/json", "Authorization": "Bearer ..."}'></textarea>
+        <div class="invalid-feedback" id="rest-headers-error"></div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small fw-semibold">Body</label>
+        <textarea id="rest-body" class="form-control form-control-sm font-monospace" rows="4"
+                  placeholder='{"key": "value"}'></textarea>
+      </div>
+    </div>
+
+    <!-- Response Panel -->
+    <div class="mb-3">
+      <div class="d-flex align-items-center gap-3 mb-2">
+        <span class="fw-semibold small">Response</span>
+        <span id="rest-status-badge" class="badge"></span>
+        <small class="text-muted" id="rest-duration"></small>
+      </div>
+      <pre id="rest-response-body" class="border rounded p-2 bg-light"
+           style="height:300px;resize:vertical;overflow:auto;font-size:12px;margin:0;white-space:pre-wrap;word-break:break-all;"></pre>
+    </div>
+    <div id="rest-spinner-row" class="mb-3" style="display:none;">
+      <span class="spinner-border spinner-border-sm text-secondary me-2"></span>
+      <small class="text-muted">Sending request...</small>
+    </div>
+
+  </div><!-- /pane-rest -->
+
+  <!-- SQLtool Pane -->
+  <div class="tab-pane fade" id="pane-sql" role="tabpanel">
+
+    <div class="mb-1">
+      <label class="form-label small fw-semibold">SQL Query
+        <span class="text-muted fw-normal">(SELECT, SHOW, DESCRIBE only — results capped at 500 rows)</span>
+      </label>
+    </div>
+    <div class="d-flex gap-2 align-items-start mb-3">
+      <textarea id="sql-input" class="form-control form-control-sm font-monospace" rows="5"
+                placeholder="SELECT * FROM wf_flow LIMIT 10;" style="flex:1;resize:vertical;"></textarea>
+      <div class="d-flex flex-column gap-2">
+        <button id="sql-run" class="btn btn-sm btn-primary" style="white-space:nowrap;">
+          <i class="bi bi-play-fill"></i> Run
+        </button>
+        <button id="sql-clear" class="btn btn-sm btn-outline-secondary">Clear</button>
+        <button id="sql-export" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-download"></i> Export
+        </button>
+      </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-3 mb-2">
+      <div id="sql-info" class="small text-muted"></div>
+    </div>
+    <div id="sql-spinner" class="mb-2" style="display:none;">
+      <span class="spinner-border spinner-border-sm text-secondary me-2"></span>
+      <small class="text-muted">Executing...</small>
+    </div>
+    <div style="height:400px;overflow:auto;resize:vertical;border:1px solid #dee2e6;border-radius:4px;">
+      <div id="sql-result"></div>
+    </div>
+
+  </div><!-- /pane-sql -->
+
+</div>
+
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  function getCsrf() {
+    var el = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (el) return el.value;
+    var m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+
+  /* ---- helpers ---- */
+  function statusBadgeClass(code) {
+    if (!code) return 'bg-secondary';
+    if (code < 300) return 'bg-success';
+    if (code < 400) return 'bg-warning text-dark';
+    return 'bg-danger';
+  }
+
+  function tryFormatJson(text) {
+    try {
+      return JSON.stringify(JSON.parse(text), null, 2);
+    } catch (e) {
+      return text;
+    }
+  }
+
+  /* ================================================================
+     RESTFultool
+  ================================================================ */
+  var restSend    = document.getElementById('rest-send');
+  var restClear   = document.getElementById('rest-clear');
+  var restMethod  = document.getElementById('rest-method');
+  var restUrl     = document.getElementById('rest-url');
+  var restHeaders = document.getElementById('rest-headers');
+  var restBody    = document.getElementById('rest-body');
+
+  var respBadge   = document.getElementById('rest-status-badge');
+  var respDur     = document.getElementById('rest-duration');
+  var respPre     = document.getElementById('rest-response-body');
+  var spinnerRow  = document.getElementById('rest-spinner-row');
+  var restExport  = document.getElementById('rest-export');
+
+  var _lastResponseText = '';
+  var _lastResponseCode = null;
+
+  restSend.addEventListener('click', function () {
+    var method  = restMethod.value;
+    var url     = restUrl.value.trim();
+    var headers = restHeaders.value.trim();
+    var body    = restBody.value.trim();
+
+    if (!url) { restUrl.focus(); return; }
+
+    /* clear any previous header validation error */
+    restHeaders.classList.remove('is-invalid');
+    document.getElementById('rest-headers-error').textContent = '';
+
+    /* validate headers JSON if provided */
+    if (headers) {
+      try { JSON.parse(headers); } catch (e) {
+        restHeaders.classList.add('is-invalid');
+        document.getElementById('rest-headers-error').textContent = 'Must be valid JSON: ' + e.message;
+        restHeaders.focus();
+        return;
+      }
+    }
+
+    restSend.disabled = true;
+    spinnerRow.style.display = '';
+    respPre.textContent = '';
+    respBadge.className = 'badge';
+    respBadge.textContent = '';
+    respDur.textContent = '';
+
+    fetch("{% url 'system:devtool_request' %}", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrf(),
+      },
+      body: JSON.stringify({ method: method, url: url, headers: headers, body: body }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      restSend.disabled = false;
+      spinnerRow.style.display = 'none';
+
+      if (!data.status) {
+        respBadge.className = 'badge bg-danger';
+        respBadge.textContent = 'Error';
+        respDur.textContent = '';
+        respPre.textContent = data.error || 'Unknown error';
+
+        _lastResponseText = data.error || '';
+        _lastResponseCode = null;
+
+        return;
+      }
+
+      var code = data.status_code;
+      respBadge.className = 'badge ' + statusBadgeClass(code);
+      respBadge.textContent = code;
+      respDur.textContent = data.duration_ms + ' ms';
+      var formatted = tryFormatJson(data.response_text);
+      respPre.textContent = formatted;
+
+      _lastResponseText = formatted;
+      _lastResponseCode = code;
+
+    })
+    .catch(function (err) {
+      restSend.disabled = false;
+      spinnerRow.style.display = 'none';
+      respBadge.className = 'badge bg-danger';
+      respBadge.textContent = 'Error';
+      respDur.textContent = '';
+      respPre.textContent = String(err);
+
+      _lastResponseText = String(err);
+      _lastResponseCode = null;
+
+    });
+  });
+
+  restClear.addEventListener('click', function () {
+    restUrl.value     = '';
+    restHeaders.value = '';
+    restBody.value    = '';
+    respPre.textContent = '';
+    respBadge.className = 'badge';
+    respBadge.textContent = '';
+    respDur.textContent = '';
+    restMethod.value  = 'GET';
+    restHeaders.classList.remove('is-invalid');
+    document.getElementById('rest-headers-error').textContent = '';
+  });
+
+  restHeaders.addEventListener('input', function () {
+    restHeaders.classList.remove('is-invalid');
+    document.getElementById('rest-headers-error').textContent = '';
+  });
+
+  restExport.addEventListener('click', function () {
+    var isJson = false;
+    try { JSON.parse(_lastResponseText); isJson = true; } catch(e) {}
+    var ext = isJson ? 'json' : 'txt';
+    var mime = isJson ? 'application/json' : 'text/plain';
+    var blob = new Blob([_lastResponseText], { type: mime });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'response.' + ext;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  });
+
+  /* ================================================================
+     SQLtool
+  ================================================================ */
+  var sqlRun     = document.getElementById('sql-run');
+  var sqlClear   = document.getElementById('sql-clear');
+  var sqlInput   = document.getElementById('sql-input');
+  var sqlInfo    = document.getElementById('sql-info');
+  var sqlSpinner = document.getElementById('sql-spinner');
+  var sqlResult  = document.getElementById('sql-result');
+  var sqlExport  = document.getElementById('sql-export');
+
+  var _sqlColumns = [];
+  var _sqlRows    = [];
+
+  sqlRun.addEventListener('click', function () {
+    var sql = sqlInput.value.trim();
+    if (!sql) { sqlInput.focus(); return; }
+
+    sqlRun.disabled    = true;
+    sqlSpinner.style.display = '';
+    sqlInfo.textContent = '';
+    sqlResult.innerHTML = '';
+
+    fetch("{% url 'system:devtool_sql' %}", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrf(),
+      },
+      body: JSON.stringify({ sql: sql }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      sqlRun.disabled    = false;
+      sqlSpinner.style.display = 'none';
+
+      if (!data.status) {
+        sqlInfo.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-circle"></i> ' + data.error + '</span>';
+        return;
+      }
+
+      sqlInfo.textContent = data.row_count + ' row(s) · ' + data.duration_ms + ' ms';
+
+      _sqlColumns = data.columns;
+      _sqlRows    = data.rows;
+
+      if (!data.columns.length) {
+        sqlResult.innerHTML = '<p class="text-muted small p-2">Query executed successfully (no result set).</p>';
+        return;
+      }
+
+      /* build result table */
+      var tbl = document.createElement('table');
+      tbl.className = 'table table-sm table-bordered table-hover';
+      tbl.style.fontSize = '12px';
+      tbl.style.minWidth = '100%';
+
+      var thead = document.createElement('thead');
+      thead.className = 'table-dark';
+      var hr = document.createElement('tr');
+      data.columns.forEach(function (col) {
+        var th = document.createElement('th');
+        th.style.whiteSpace = 'nowrap';
+        th.textContent = col;
+        hr.appendChild(th);
+      });
+      thead.appendChild(hr);
+      tbl.appendChild(thead);
+
+      var tbody = document.createElement('tbody');
+      data.rows.forEach(function (row) {
+        var tr = document.createElement('tr');
+        row.forEach(function (cell) {
+          var td = document.createElement('td');
+          td.style.maxWidth = '300px';
+          td.style.overflow = 'hidden';
+          td.style.textOverflow = 'ellipsis';
+          td.style.whiteSpace = 'nowrap';
+          td.title = cell !== null ? String(cell) : 'NULL';
+          td.textContent = cell !== null ? String(cell) : 'NULL';
+          if (cell === null) td.style.color = '#aaa';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      tbl.appendChild(tbody);
+      sqlResult.appendChild(tbl);
+
+      if (data.row_count === 500) {
+        var note = document.createElement('p');
+        note.className = 'text-muted small mt-1 px-2';
+        note.textContent = 'Results capped at 500 rows.';
+        sqlResult.appendChild(note);
+      }
+
+    })
+    .catch(function (err) {
+      sqlRun.disabled    = false;
+      sqlSpinner.style.display = 'none';
+      sqlInfo.innerHTML = '<span class="text-danger">' + String(err) + '</span>';
+    });
+  });
+
+  sqlClear.addEventListener('click', function () {
+    sqlInput.value   = '';
+    sqlInfo.textContent = '';
+    sqlResult.innerHTML = '';
+    _sqlColumns = [];
+    _sqlRows    = [];
+  });
+
+  /* allow Ctrl+Enter to run SQL */
+  sqlInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      sqlRun.click();
+    }
+  });
+
+  /* SQL Excel export */
+  sqlExport.addEventListener('click', function () {
+    var data = [_sqlColumns].concat(_sqlRows.map(function(row) {
+      return row.map(function(cell) { return cell !== null ? cell : ''; });
+    }));
+    var ws = XLSX.utils.aoa_to_sheet(data);
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    XLSX.writeFile(wb, 'query_result.xlsx');
+  });
+
+}());
+</script>
+{% endblock %}

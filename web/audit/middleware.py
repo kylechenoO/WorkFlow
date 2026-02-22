@@ -8,6 +8,7 @@ them to the audit trail.
 ## import buildin pkgs
 import json
 import logging
+import urllib.parse
 
 ## import django pkgs
 from django.utils.deprecation import MiddlewareMixin
@@ -33,6 +34,30 @@ class AuditMiddleware(MiddlewareMixin):
         '/accounts/login/',
     ]
 
+    ## paths already audited by views — skip to avoid duplicate entries
+    VIEW_AUDITED_PATHS = [
+        '/workflows/',
+        '/accounts/',
+        '/system/',
+        '/modules/',
+    ]
+
+    ## POST body keys that should never appear in audit logs
+    SENSITIVE_KEYS = {'csrfmiddlewaretoken', 'password', 'token', 'secret', 'key', 'api_key'}
+
+    ## request META keys to capture as headers (never include cookie/auth)
+    HEADER_MAP = {
+        'HTTP_USER_AGENT': 'User-Agent',
+        'HTTP_REFERER': 'Referer',
+        'HTTP_HOST': 'Host',
+        'HTTP_ACCEPT': 'Accept',
+        'HTTP_ACCEPT_LANGUAGE': 'Accept-Language',
+        'HTTP_ACCEPT_ENCODING': 'Accept-Encoding',
+        'HTTP_CONNECTION': 'Connection',
+        'CONTENT_TYPE': 'Content-Type',
+        'CONTENT_LENGTH': 'Content-Length',
+    }
+
     METHODS = ('POST', 'PUT', 'DELETE')
 
     def process_response(self, request, response):
@@ -53,6 +78,11 @@ class AuditMiddleware(MiddlewareMixin):
                 if path.startswith(exempt):
                     return response
 
+            ## skip paths already audited by views
+            for audited in self.VIEW_AUDITED_PATHS:
+                if path.startswith(audited):
+                    return response
+
             ## skip failed requests (4xx, 5xx)
             if response.status_code >= 400:
                 return response
@@ -61,21 +91,48 @@ class AuditMiddleware(MiddlewareMixin):
             action = self._parse_action(request.method, path)
             target_type, target_name = self._parse_target(path)
 
-            ## build detail
-            detail = {
+            ## build request sub-object
+            req_data = {
                 'method': request.method,
                 'path': path,
-                'status_code': response.status_code,
+                'headers': self._get_headers(request),
             }
 
-            ## try to capture request body summary (not for file uploads)
+            ## capture query string params
+            if request.GET:
+                req_data['query'] = dict(request.GET)
+
+            ## try to capture request body (not for file uploads)
             content_type = request.content_type or ''
-            if 'json' in content_type or 'form' in content_type:
+            if 'json' in content_type:
                 try:
-                    body = request.body.decode('utf-8', errors='replace')[:500]
-                    detail['body_preview'] = body
+                    body = json.loads(request.body.decode('utf-8', errors='replace'))
+                    body = {k: v for k, v in body.items() if k.lower() not in self.SENSITIVE_KEYS}
+                    req_data['body'] = body
                 except Exception:
                     pass
+            elif 'form' in content_type:
+                try:
+                    body = urllib.parse.parse_qs(request.body.decode('utf-8', errors='replace'))
+                    clean = {}
+                    for k, v in body.items():
+                        if k.lower() not in self.SENSITIVE_KEYS:
+                            clean[k] = v[0] if len(v) == 1 else v
+                    if clean:
+                        req_data['body'] = clean
+                except Exception:
+                    pass
+
+            ## build response sub-object
+            resp_data = {
+                'status_code': response.status_code,
+                'content_type': response.get('Content-Type', ''),
+            }
+
+            detail = {
+                'request': req_data,
+                'response': resp_data,
+            }
 
             ## lazy import to avoid circular dependency
             from audit.models import AuditLog
@@ -93,6 +150,16 @@ class AuditMiddleware(MiddlewareMixin):
             logger.warning('AuditMiddleware error: %s' % (e))
 
         return response
+
+    def _get_headers(self, request):
+        """Extract safe HTTP request headers from request.META."""
+
+        headers = {}
+        for meta_key, header_name in self.HEADER_MAP.items():
+            val = request.META.get(meta_key)
+            if val:
+                headers[header_name] = val
+        return headers
 
     def _parse_action(self, method, path):
         """Derive action name from HTTP method and URL path."""

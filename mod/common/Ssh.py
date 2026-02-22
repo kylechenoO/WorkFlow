@@ -15,7 +15,7 @@ Responsibilities:
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import buildin pkgs
@@ -32,6 +32,10 @@ class Ssh(object):
         - Upload and download files via SFTP
     """
 
+    ## context keys
+    _CTX_CON  = '__ssh_con__'
+    _CTX_SFTP = '__ssh_sftp__'
+
     def __init__(self, logger: object) -> None:
         """
         Initialize the Ssh manager.
@@ -41,8 +45,14 @@ class Ssh(object):
         """
 
         self.logger = logger
-        self.con = None
-        self.sftp = None
+
+    def _get_con(self, context: dict):
+        """Return the SSH client from context, or None."""
+        return context.get(self._CTX_CON)
+
+    def _get_sftp(self, context: dict):
+        """Return the SFTP session from context, or None."""
+        return context.get(self._CTX_SFTP)
 
     ## def connect(self, host: str, port: int, username: str, password: str, key_file: str, timeout: int) -> dict:
     def connect(self, context: dict, cfgs: dict) -> dict:
@@ -51,11 +61,11 @@ class Ssh(object):
 
         Args:
             host (str): Remote server hostname or IP
-            port (int): Optional SSH port, default 22
+            port (int): Optional SSH port (default: 22)
             username (str): SSH username
-            password (str): Optional SSH password
-            key_file (str): Optional path to private key file
-            timeout (int): Optional connection timeout in seconds, default 30
+            password (str): Optional SSH password (default: "")
+            key_file (str): Optional path to private key file (default: "")
+            timeout (int): Optional connection timeout in seconds (default: 30)
 
         Returns:
             dict: Connection status
@@ -77,8 +87,8 @@ class Ssh(object):
 
         try:
             ## create SSH client
-            self.con = paramiko.SSHClient()
-            self.con.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            con = paramiko.SSHClient()
+            con.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
             ## build connect kwargs
             connect_kwargs = {
@@ -97,10 +107,13 @@ class Ssh(object):
                 connect_kwargs['password'] = password
 
             ## connect
-            self.con.connect(**connect_kwargs)
+            con.connect(**connect_kwargs)
 
             ## open SFTP session
-            self.sftp = self.con.open_sftp()
+            sftp = con.open_sftp()
+
+            context[self._CTX_CON] = con
+            context[self._CTX_SFTP] = sftp
 
             self.logger.info({'status': 'Successfully connected to %s:%s as %s' % (host, port, username)})
             return {
@@ -110,8 +123,8 @@ class Ssh(object):
         ## error handling
         except Exception as e:
             self.logger.error({'status': 'Error connecting to SSH %s:%s: %s' % (host, port, e)})
-            self.con = None
-            self.sftp = None
+            context[self._CTX_CON] = None
+            context[self._CTX_SFTP] = None
             return {
                 'status': False
             }
@@ -126,17 +139,19 @@ class Ssh(object):
 
         try:
             ## close SFTP
-            if self.sftp:
-                self.sftp.close()
+            sftp = self._get_sftp(context)
+            if sftp:
+                sftp.close()
                 self.logger.info({'status': 'SFTP session closed successfully'})
 
             ## close SSH
-            if self.con:
-                self.con.close()
+            con = self._get_con(context)
+            if con:
+                con.close()
                 self.logger.info({'status': 'SSH connection closed successfully'})
 
-            self.sftp = None
-            self.con = None
+            context[self._CTX_SFTP] = None
+            context[self._CTX_CON] = None
 
         ## error handling
         except Exception as e:
@@ -153,7 +168,7 @@ class Ssh(object):
 
         Args:
             cmd (str): Shell command to execute
-            timeout (int): Optional command timeout in seconds, default 30
+            timeout (int): Optional command timeout in seconds (default: 30)
 
         Returns:
             dict: Command result with exit_code, stdout, stderr
@@ -169,7 +184,8 @@ class Ssh(object):
 
         try:
             ## check connection
-            if not self.con:
+            con = self._get_con(context)
+            if not con:
                 self.logger.error({'status': 'Error: No active SSH connection. Please connect first.'})
                 return {
                     'status': False,
@@ -179,7 +195,7 @@ class Ssh(object):
                 }
 
             ## execute command
-            stdin, stdout, stderr = self.con.exec_command(cmd, timeout=timeout)
+            stdin, stdout, stderr = con.exec_command(cmd, timeout=timeout)
 
             ## read output
             stdout_str = stdout.read().decode('utf-8', errors='replace')
@@ -214,9 +230,9 @@ class Ssh(object):
 
         Args:
             script_path (str): Local path to script file
-            interpreter (str): Optional remote interpreter, default bash
-            args (str): Optional arguments to pass to the script
-            timeout (int): Optional command timeout in seconds, default 30
+            interpreter (str): Optional remote interpreter (default: "bash")
+            args (str): Optional arguments to pass to the script (default: "")
+            timeout (int): Optional command timeout in seconds (default: 30)
 
         Returns:
             dict: Script result with exit_code, stdout, stderr
@@ -236,7 +252,8 @@ class Ssh(object):
 
         try:
             ## check connection
-            if not self.con:
+            con = self._get_con(context)
+            if not con:
                 self.logger.error({'status': 'Error: No active SSH connection. Please connect first.'})
                 return {
                     'status': False,
@@ -246,14 +263,23 @@ class Ssh(object):
                 }
 
             ## read local script content
-            with open(script_path, 'r') as f:
-                script_content = f.read()
+            try:
+                with open(script_path, 'r') as f:
+                    script_content = f.read()
+            except FileNotFoundError:
+                self.logger.error({'status': 'Error: Script file not found: %s' % (script_path)})
+                return {
+                    'status': False,
+                    'exit_code': -1,
+                    'stdout': '',
+                    'stderr': 'Script file not found: %s' % script_path
+                }
 
             ## build remote command
             remote_cmd = '%s %s' % (interpreter, args) if args else interpreter
 
             ## execute with script content via stdin
-            stdin, stdout, stderr = self.con.exec_command(remote_cmd, timeout=timeout)
+            stdin, stdout, stderr = con.exec_command(remote_cmd, timeout=timeout)
             stdin.write(script_content)
             stdin.channel.shutdown_write()
 
@@ -303,14 +329,15 @@ class Ssh(object):
 
         try:
             ## check connection
-            if not self.sftp:
+            sftp = self._get_sftp(context)
+            if not sftp:
                 self.logger.error({'status': 'Error: No active SFTP session. Please connect first.'})
                 return {
                     'status': False
                 }
 
             ## upload file
-            self.sftp.put(local_path, remote_path)
+            sftp.put(local_path, remote_path)
 
             self.logger.info({'status': 'Successfully uploaded %s to %s' % (local_path, remote_path)})
             return {
@@ -347,14 +374,15 @@ class Ssh(object):
 
         try:
             ## check connection
-            if not self.sftp:
+            sftp = self._get_sftp(context)
+            if not sftp:
                 self.logger.error({'status': 'Error: No active SFTP session. Please connect first.'})
                 return {
                     'status': False
                 }
 
             ## download file
-            self.sftp.get(remote_path, local_path)
+            sftp.get(remote_path, local_path)
 
             self.logger.info({'status': 'Successfully downloaded %s to %s' % (remote_path, local_path)})
             return {

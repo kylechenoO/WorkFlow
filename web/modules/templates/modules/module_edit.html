@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Edit: {{ category }}.{{ module_name }} - WorkFlow{% endblock %}
+{% block page_title %}Edit Module: {{ category }}.{{ module_name }}{% endblock %}
+
+{% block extra_css %}
+<!-- CodeMirror CSS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="{% static 'css/module_editor.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="module-editor-wrapper">
+  <!-- Left: Code Editor -->
+  <div class="module-editor-main">
+    <form method="post" id="module-form">
+      {% csrf_token %}
+      <div class="editor-toolbar">
+        <div>
+          <span class="badge bg-secondary">{{ category }}</span>
+          <strong>{{ module_name }}.py</strong>
+        </div>
+        <div class="d-flex gap-2">
+          <a href="{% url 'modules:module_versions' category module_name %}" class="btn btn-sm btn-outline-info">
+            <i class="bi bi-clock-history"></i> History
+          </a>
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="bi bi-check-lg"></i> Save
+          </button>
+          <a href="{% url 'modules:module_list' %}" class="btn btn-sm btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back
+          </a>
+        </div>
+      </div>
+      <textarea id="code-editor" name="code">{{ code }}</textarea>
+    </form>
+  </div>
+
+  <!-- Right: Introspection Panel -->
+  <div class="module-editor-panel">
+    <div class="panel-header">
+      <i class="bi bi-info-circle"></i> Module Info
+    </div>
+    <div class="panel-body" id="introspect-panel">
+      {% if mod_info %}
+      <div class="prop-section">
+        <label>Class</label>
+        <div class="prop-value">{{ module_name }}</div>
+      </div>
+      {% if mod_info.description %}
+      <div class="prop-section">
+        <label>Description</label>
+        <div class="prop-value small">{{ mod_info.description }}</div>
+      </div>
+      {% endif %}
+      <div class="prop-divider"></div>
+      <div class="prop-section">
+        <label>Methods ({{ mod_info.methods|length }})</label>
+      </div>
+      {% for method_name, method_data in mod_info.methods.items %}
+      <div class="method-block">
+        <div class="method-name" data-method="{{ method_name }}" onclick="jumpToMethod('{{ method_name }}')">{{ method_name }}()</div>
+        <div class="method-desc">{{ method_data.label }}</div>
+        {% if method_data.params %}
+        <div class="method-params">
+          {% for param_name, param_info in method_data.params.items %}
+          <div class="param-item">
+            <code>{{ param_name }}</code>
+            <span class="param-type">{{ param_info.type }}</span>
+            {% if param_info.required %}<span class="param-req">*</span>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="text-muted small p-2">
+        <i class="bi bi-exclamation-triangle"></i>
+        Could not introspect module. Save your code and reload to see method info.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- CodeMirror JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
+<script>
+var _editorCM = null;
+
+(function () {
+  var textarea = document.getElementById('code-editor');
+  if (!textarea) return;
+
+  var cm = CodeMirror.fromTextArea(textarea, {
+    mode: 'python',
+    lineNumbers: true,
+    matchBrackets: true,
+    autoCloseBrackets: true,
+    indentUnit: 4,
+    tabSize: 4,
+    indentWithTabs: false,
+    theme: 'default',
+    lineWrapping: false
+  });
+
+  _editorCM = cm;
+
+  // add page-editor class to scrollable body to disable outer scroll
+  var scrollBody = document.querySelector('.module-editor-wrapper').parentElement;
+  if (scrollBody) scrollBody.classList.add('page-editor');
+
+  // set CodeMirror height to fill the wrapper minus toolbar
+  function resizeEditor() {
+    var wrapper = document.querySelector('.module-editor-wrapper');
+    var toolbar = document.querySelector('.editor-toolbar');
+    if (!wrapper || !toolbar) return;
+    var h = wrapper.clientHeight - toolbar.offsetHeight;
+    if (h > 50) cm.setSize(null, h + 'px');
+  }
+
+  setTimeout(function () { resizeEditor(); cm.refresh(); }, 50);
+  window.addEventListener('resize', function () { resizeEditor(); cm.refresh(); });
+
+  // Ctrl+S / Cmd+S to save
+  cm.setOption('extraKeys', {
+    'Ctrl-S': function () {
+      document.getElementById('module-form').submit();
+    },
+    'Cmd-S': function () {
+      document.getElementById('module-form').submit();
+    }
+  });
+})();
+
+// click method name in right panel to jump to its definition
+function jumpToMethod(name) {
+  if (!_editorCM) return;
+
+  var pattern = new RegExp('^\\s*def\\s+' + name + '\\s*\\(');
+  var lineCount = _editorCM.lineCount();
+
+  for (var i = 0; i < lineCount; i++) {
+    var lineText = _editorCM.getLine(i);
+    if (pattern.test(lineText)) {
+      _editorCM.setCursor(i, 0);
+      var editorHeight = _editorCM.getScrollerElement().clientHeight;
+      var lineTop = _editorCM.charCoords({line: i, ch: 0}, 'local').top;
+      _editorCM.scrollTo(null, lineTop - (editorHeight / 2) + 10);
+      _editorCM.focus();
+
+      // highlight the method name in the line
+      var match = lineText.match(new RegExp('def\\s+(' + name + ')'));
+      if (match) {
+        var start = lineText.indexOf(match[1]);
+        _editorCM.setSelection(
+          {line: i, ch: start},
+          {line: i, ch: start + name.length}
+        );
+      }
+      break;
+    }
+  }
+
+  // highlight active method in panel
+  document.querySelectorAll('.method-block').forEach(function (block) {
+    block.classList.remove('method-active');
+  });
+  var clicked = document.querySelector('.method-name[data-method="' + name + '"]');
+  if (clicked && clicked.parentElement) {
+    clicked.parentElement.classList.add('method-active');
+  }
+}
+</script>
+{% endblock %}

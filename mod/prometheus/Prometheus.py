@@ -15,7 +15,7 @@ Responsibilities:
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import buildin pkgs
@@ -36,6 +36,11 @@ class Prometheus(object):
         - Write metrics to text file
     """
 
+    ## context keys
+    _CTX_REGISTRY = '__prom_registry__'
+    _CTX_GATEWAY  = '__prom_gateway__'
+    _CTX_JOB      = '__prom_job__'
+
     def __init__(self, logger: object) -> None:
         """
         Initialize the Prometheus manager.
@@ -45,9 +50,18 @@ class Prometheus(object):
         """
 
         self.logger = logger
-        self.registry = None
-        self.gateway = None
-        self.job = None
+
+    def _get_registry(self, context: dict):
+        """Return the CollectorRegistry from context, or None."""
+        return context.get(self._CTX_REGISTRY)
+
+    def _get_gateway(self, context: dict):
+        """Return the Pushgateway URL from context, or None."""
+        return context.get(self._CTX_GATEWAY)
+
+    def _get_job(self, context: dict):
+        """Return the job name from context, or None."""
+        return context.get(self._CTX_JOB)
 
     ## def connect(self, gateway: str, job: str) -> dict:
     def connect(self, context: dict, cfgs: dict) -> dict:
@@ -55,7 +69,7 @@ class Prometheus(object):
         Create a fresh Prometheus CollectorRegistry and store Pushgateway URL.
 
         Args:
-            gateway (str): Optional Pushgateway URL
+            gateway (str): Optional Pushgateway URL (default: "")
             job (str): Prometheus job label
 
         Returns:
@@ -72,9 +86,9 @@ class Prometheus(object):
 
         try:
             ## create registry
-            self.registry = CollectorRegistry()
-            self.gateway = gateway
-            self.job = job
+            context[self._CTX_REGISTRY] = CollectorRegistry()
+            context[self._CTX_GATEWAY] = gateway
+            context[self._CTX_JOB] = job
 
             self.logger.info({'status': 'Successfully created Prometheus registry for job %s' % (job)})
             return {
@@ -84,9 +98,9 @@ class Prometheus(object):
         ## error handling
         except Exception as e:
             self.logger.error({'status': 'Error creating Prometheus registry: %s' % (e)})
-            self.registry = None
-            self.gateway = None
-            self.job = None
+            context[self._CTX_REGISTRY] = None
+            context[self._CTX_GATEWAY] = None
+            context[self._CTX_JOB] = None
             return {
                 'status': False
             }
@@ -101,12 +115,12 @@ class Prometheus(object):
 
         try:
             ## clear registry and gateway
-            if self.registry:
+            if self._get_registry(context):
                 self.logger.info({'status': 'Prometheus registry cleared successfully'})
 
-            self.registry = None
-            self.gateway = None
-            self.job = None
+            context[self._CTX_REGISTRY] = None
+            context[self._CTX_GATEWAY] = None
+            context[self._CTX_JOB] = None
 
         ## error handling
         except Exception as e:
@@ -125,14 +139,13 @@ class Prometheus(object):
         Labels can be dynamic (from dict fields) and/or static (fixed values).
 
         Args:
-            data (list): List of dicts from upstream workflow step
+            data (ref): List of dicts from upstream workflow step
             metric_name (str): Prometheus metric name
-            metric_desc (str): Prometheus metric description
-            metric_type (str): One of: gauge, counter, histogram, summary
+            metric_desc (str): Optional Prometheus metric description (default: "")
+            metric_type (str): Optional metric type gauge, counter, histogram, summary (default: "gauge")
             value_col (str): Field name in each dict to use as the metric value
-            label_cols (list): Optional list of field names from dict to use as dynamic labels
-            static_labels (dict): Optional dict of fixed labels applied to all rows
-            buckets (list): Optional histogram bucket boundaries
+            label_cols (list): Optional field names to use as dynamic labels (default: [])
+            static_labels (dict): Optional dict of fixed labels applied to all rows (default: {})
 
         Returns:
             dict: Conversion result with metrics count
@@ -159,7 +172,8 @@ class Prometheus(object):
 
         try:
             ## check connection
-            if not self.registry:
+            registry = self._get_registry(context)
+            if not registry:
                 self.logger.error({'status': 'Error: No active registry. Please connect first.'})
                 return {
                     'status': False
@@ -197,7 +211,7 @@ class Prometheus(object):
                 'name': metric_name,
                 'documentation': metric_desc,
                 'labelnames': all_label_names,
-                'registry': self.registry
+                'registry': registry
             }
 
             ## set histogram buckets
@@ -260,30 +274,33 @@ class Prometheus(object):
 
         try:
             ## check connection
-            if not self.registry:
+            registry = self._get_registry(context)
+            if not registry:
                 self.logger.error({'status': 'Error: No active registry. Please connect first.'})
                 return {
                     'status': False
                 }
 
             ## check gateway
-            if not self.gateway:
+            gateway = self._get_gateway(context)
+            if not gateway:
                 self.logger.error({'status': 'Error: No Pushgateway URL configured. Please set gateway in connect.'})
                 return {
                     'status': False
                 }
 
             ## check job
-            if not self.job:
+            job = self._get_job(context)
+            if not job:
                 self.logger.error({'status': 'Error: No job name configured. Please set job in connect.'})
                 return {
                     'status': False
                 }
 
             ## push to gateway
-            push_to_gateway(self.gateway, job=self.job, registry=self.registry)
+            push_to_gateway(gateway, job=job, registry=registry)
 
-            self.logger.info({'status': 'Successfully pushed metrics to Pushgateway at %s for job %s' % (self.gateway, self.job)})
+            self.logger.info({'status': 'Successfully pushed metrics to Pushgateway at %s for job %s' % (gateway, job)})
             return {
                 'status': True
             }
@@ -315,14 +332,15 @@ class Prometheus(object):
 
         try:
             ## check connection
-            if not self.registry:
+            registry = self._get_registry(context)
+            if not registry:
                 self.logger.error({'status': 'Error: No active registry. Please connect first.'})
                 return {
                     'status': False
                 }
 
             ## write to text file
-            write_to_textfile(file_path, self.registry)
+            write_to_textfile(file_path, registry)
 
             self.logger.info({'status': 'Successfully wrote metrics to file %s' % (file_path)})
             return {
@@ -335,4 +353,3 @@ class Prometheus(object):
             return {
                 'status': False
             }
-

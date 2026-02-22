@@ -8,7 +8,7 @@ dynamically by the Flow engine during workflow execution.
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 class Kt(object):
@@ -35,17 +35,17 @@ class Kt(object):
         Log a message and return a result payload.
 
         Args:
-            context (dict): Shared workflow execution context
-            cfgs (dict): Procedure configuration parameters
+            msg (str): Message to log
 
         Returns:
-            dict: Procedure execution result
+            status (bool): True on success
+            msg (str): Return message
         """
 
         msg = cfgs['msg']
         self.logger.info({'msg': msg})
         return {
-            'status': 0,
+            'status': True,
             'msg': 'ret from %s' % (msg)
         }
 
@@ -54,17 +54,17 @@ class Kt(object):
         Log a message and return a result payload.
 
         Args:
-            context (dict): Shared workflow execution context
-            cfgs (dict): Procedure configuration parameters
+            msg (str): Message to log
 
         Returns:
-            dict: Procedure execution result
+            status (bool): True on success
+            msg (str): Return message
         """
 
         msg = cfgs['msg']
         self.logger.info({'msg': msg})
         return {
-            'status': 0,
+            'status': True,
             'msg': 'ret from %s' % (msg)
         }
 
