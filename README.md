@@ -206,7 +206,7 @@ WorkFlow/
 │   │   └── MongoDBCluster.py    # MongoDB cluster with failover
 │   ├── kafkaclient/
 │   │   └── Kafka.py             # Kafka producer/consumer
-│   ├── elasticsearchclient/
+│   ├── elasticsearch/
 │   │   └── ElasticSearch.py     # Elasticsearch CRUD + Search
 │   └── prometheus/
 │       └── Prometheus.py        # Prometheus metrics push + export
@@ -919,7 +919,7 @@ Returns `{"status": True, "connected_node": "host:port"}` on connect.
 
 ---
 
-### `elasticsearchclient.ElasticSearch` — Elasticsearch
+### `elasticsearch.ElasticSearch` — Elasticsearch
 
 | Method | Description |
 |--------|-------------|
