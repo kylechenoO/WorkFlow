@@ -14,7 +14,7 @@ Responsibilities:
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import buildin pkgs
@@ -36,7 +36,11 @@ class MySQL(object):
         - Perform insert, update, and upsert operations
         - Handle transactions safely with rollback support
     """
-    
+
+    ## context keys
+    _CTX_CON = '__mysql_con__'
+    _CTX_CUR = '__mysql_cur__'
+
     def __init__(self, logger: object) -> None:
         """
         Initialize the MySQL manager.
@@ -46,8 +50,14 @@ class MySQL(object):
         """
 
         self.logger = logger
-        self.con = None
-        self.cur = None
+
+    def _get_con(self, context: dict):
+        """Return the MySQL connection from context, or None."""
+        return context.get(self._CTX_CON)
+
+    def _get_cur(self, context: dict):
+        """Return the MySQL cursor from context, or None."""
+        return context.get(self._CTX_CUR)
 
     ## def connect(self, host: str, port: str, username: str, password: str, database: str, charset: str) -> bool:
     def connect(self, context: dict, cfgs: dict) -> dict:
@@ -56,11 +66,11 @@ class MySQL(object):
 
         Args:
             host (str): MySQL server hostname or IP
-            port (str): MySQL server port
+            port (int): Optional MySQL server port (default: 3306)
             username (str): Database username
             password (str): Database password
             database (str): Database name
-            charset (str): Character encoding
+            charset (str): Optional character encoding (default: "utf8mb4")
 
         Returns:
             bool: True if connection is successful, False otherwise
@@ -78,13 +88,12 @@ class MySQL(object):
         self.logger.debug({'db.host': host})
         self.logger.debug({'db.port': port})
         self.logger.debug({'db.username': username})
-        self.logger.debug({'db.password': password})
         self.logger.debug({'db.database': database})
         self.logger.debug({'db.charset': charset})
 
         try:
             ## connect to db
-            self.con = pymysql.connect(
+            con = pymysql.connect(
                 host = host,
                 port = int(port),
                 user = username,
@@ -94,8 +103,10 @@ class MySQL(object):
             )
 
             ## gen cursor
-            if self.con.open:
-                self.cur = self.con.cursor()
+            if con.open:
+                cur = con.cursor()
+                context[self._CTX_CON] = con
+                context[self._CTX_CUR] = cur
                 self.logger.info({'status': 'Successfully connected to MySQL database %s at %s:%s' % (database, host, port)})
                 return {
                     'status': True
@@ -103,6 +114,8 @@ class MySQL(object):
 
             else:
                 self.logger.error({'status': 'Failed to connect to MySQL database'})
+                context[self._CTX_CON] = None
+                context[self._CTX_CUR] = None
                 return {
                     'status': False
                 }
@@ -110,8 +123,8 @@ class MySQL(object):
         ## error handling
         except Error as e:
             self.logger.error({'status': "Error connecting to MySQL: %s" % (e)})
-            self.con = None
-            self.cur = None
+            context[self._CTX_CON] = None
+            context[self._CTX_CUR] = None
             return {
                 'status': False
             }
@@ -126,17 +139,19 @@ class MySQL(object):
 
         try:
             ## disconnect cursor
-            if self.cur:
-                self.cur.close()
+            cur = self._get_cur(context)
+            if cur:
+                cur.close()
                 self.logger.info({'status': 'Cursor closed successfully'})
 
             ## disconnect db connection
-            if self.con and self.con.open:
-                self.con.close()
+            con = self._get_con(context)
+            if con and con.open:
+                con.close()
                 self.logger.info({'status': 'MySQL connection closed successfully'})
 
-            self.cur = None
-            self.con = None
+            context[self._CTX_CUR] = None
+            context[self._CTX_CON] = None
 
         ## error handling
         except Error as e:
@@ -157,17 +172,18 @@ class MySQL(object):
 
         try:
             ## check db connection
-            if not self.cur:
+            cur = self._get_cur(context)
+            if not cur:
                 self.logger.error({'status': 'Error: No active cursor. Please connect first.'})
                 return []
 
             ## query
-            self.cur.execute("SHOW DATABASES")
-            databases = self.cur.fetchall()
+            cur.execute("SHOW DATABASES")
+            databases = cur.fetchall()
 
             ## transfer data format
             databases = [row[0] for row in databases] if len(databases) > 0 else []
-            self.logger.info({'databases': 'Available Databases:\n%s" % (data)'})
+            self.logger.info({'databases': 'Available Databases:\n%s' % (databases)})
             return {
                 'status': True,
                 'databases': databases
@@ -175,7 +191,7 @@ class MySQL(object):
 
         ## error handling
         except Error as e:
-            self.logger.error({'status': 'Error showing databases: %s" % (e)'})
+            self.logger.error({'status': 'Error showing databases: %s' % (e)})
             return {
                 'status': False,
                 'databases': []
@@ -197,24 +213,25 @@ class MySQL(object):
 
         try:
             ## check db connection
-            if not self.cur:
+            cur = self._get_cur(context)
+            if not cur:
                 self.logger.error({'status': 'Error: No active cursor. Please connect first.'})
                 return {
                     'status': False,
                     'result': []
                 }
-            
+
             ## execute query
-            self.cur.execute(SQL)
-            results = self.cur.fetchall()
-            
+            cur.execute(SQL)
+            results = cur.fetchall()
+
             ## get column names from cursor description
-            if self.cur.description:
-                columns = [desc[0] for desc in self.cur.description]
+            if cur.description:
+                columns = [desc[0] for desc in cur.description]
 
             else:
                 columns = []
-            
+
             self.logger.info({'status': 'Query executed successfully, returned %s rows' % (len(results))})
 
             ## return as list of dicts
@@ -233,7 +250,7 @@ class MySQL(object):
                 'status': True,
                 'result': dict_results
             }
-                
+
         ## error handling
         except Error as e:
             self.logger.error({'status': 'Error executing query: %s' % (e)})
@@ -250,11 +267,11 @@ class MySQL(object):
         Uses ON DUPLICATE KEY UPDATE and processes data in batches.
 
         Args:
-            data (list): Input data
+            data (ref): Input data
             table (str): Target table name
-            cols (list): Column list
-            uniq_key (str): Unique key column
-            batch_size (int): Batch size for inserts
+            cols (list): Optional column list (default: [])
+            uniq_key (str): Unique key column for ON DUPLICATE KEY UPDATE
+            batch_size (int): Optional batch size for inserts (default: 1000)
 
         Returns:
             bool: True on success, False on failure
@@ -275,7 +292,9 @@ class MySQL(object):
         df = DataTransformerObj.dicts2df(context, dicts2df_args)['data']
         try:
             ## validation
-            if not self.cur:
+            cur = self._get_cur(context)
+            con = self._get_con(context)
+            if not cur:
                 self.logger.error({'status': 'Error: No active cursor. Please connect first.'})
                 return {
                     'status': False
@@ -319,34 +338,35 @@ class MySQL(object):
                 end_idx = min(start_idx + batch_size, total_rows)
                 batch_df = df.iloc[start_idx:end_idx]
                 batch_rows = len(batch_df)
-                
+
                 ## build batch VALUES clause
                 batch_placeholders = ', '.join(['(%s)' % placeholders] * batch_rows)
-                
+
                 ## INSERT to specified table with ON DUPLICATE KEY UPDATE
                 sql = "INSERT INTO %s (%s) VALUES %s ON DUPLICATE KEY UPDATE %s" % (
                     table, columns_str, batch_placeholders, update_clause
                 )
-                
+
                 ## extract values from DataFrame using vectorized operation
                 values = batch_df[cols].values.flatten().tolist()
-                
+
                 ## execute batch insert
-                self.cur.execute(sql, values)
+                cur.execute(sql, values)
                 self.logger.debug({'status': 'Processed batch %s-%s (%s rows)' % (start_idx + 1, end_idx, batch_rows)})
-            
+
             ## commit all batches at once
-            self.con.commit()
+            con.commit()
             self.logger.debug({'status': 'Successfully committed %s rows to table %s' % (total_rows, table)})
             return {
                 'status': True
             }
-            
+
         ## error handling
         except Error as e:
             self.logger.error({'status': 'Error during insert: %s' % (e)})
-            if self.con:
-                self.con.rollback()
+            con = self._get_con(context)
+            if con:
+                con.rollback()
                 self.logger.debug({'status': 'Rolled back transaction'})
 
             return {
@@ -359,9 +379,9 @@ class MySQL(object):
         Insert multiple rows into a table in a single SQL statement.
 
         Args:
-            data (list): Input data
-            table (str): Target table
-            cols (list): Column list
+            data (ref): Data to insert
+            table (str): Target table name
+            cols (list): Optional column list (default: [])
 
         Returns:
             bool: True on success, False on failure
@@ -377,22 +397,24 @@ class MySQL(object):
         dicts2df_args = {
             'data': data
         }
-        df = DataTransformerObj.dicts2df(contex, dicts2df_args)
+        df = DataTransformerObj.dicts2df(context, dicts2df_args)['data']
         try:
             ## check db connection
-            if not self.cur:
+            cur = self._get_cur(context)
+            con = self._get_con(context)
+            if not cur:
                 self.logger.error({'status': 'No active cursor.'})
                 return {
                     'status': False
                 }
-    
+
             ## check if df is empty
             if df is None or df.empty:
                 self.logger.error({'status': 'DataFrame is empty.'})
                 return {
                     'status': False
                 }
-    
+
             ## validate columns
             missing = [c for c in cols if c not in df.columns]
             if missing:
@@ -400,17 +422,17 @@ class MySQL(object):
                 return {
                     'status': False
                 }
-    
+
             ## replace NaN with None
             df = df.where(pd.notna(df), None)
-    
+
             ## SQL fields
             col_str = ", ".join(f"`{c}`" for c in cols)
             row_placeholder = "(" + ", ".join(["%s"] * len(cols)) + ")"
-    
+
             ## build multi-row placeholders
             placeholders = ", ".join([row_placeholder] * len(df))
-    
+
             ## flat list of values
             values = []
             for row in df[cols].itertuples(index=False, name=None):
@@ -420,18 +442,19 @@ class MySQL(object):
             ## execute
             self.logger.debug({'sql': '%s' % (sql)})
             self.logger.debug({'val': '%s' % (values)})
-            self.cur.execute(sql, values)
-            self.con.commit()
+            cur.execute(sql, values)
+            con.commit()
             self.logger.debug({'status': 'Inserted %s rows into %s in one SQL statement' % (len(df), table)})
             return {
                 'status': True
             }
-    
+
         ## error handling
         except Exception as e:
-            if self.con:
-                self.con.rollback()
-    
+            con = self._get_con(context)
+            if con:
+                con.rollback()
+
             self.logger.error({'status': 'Error: %s' % (e)})
             return {
                 'status': False
@@ -443,10 +466,10 @@ class MySQL(object):
         Update records in a table using a WHERE clause.
 
         Args:
-            data (dict): Update data
-            table (str): Target table
-            cols (list): Columns to update
-            where (str): SQL WHERE condition
+            data (ref): Update data
+            table (str): Target table name
+            cols (list): Optional column list (default: [])
+            where (str): WHERE clause
 
         Returns:
             bool: True on success, False on failure
@@ -459,28 +482,31 @@ class MySQL(object):
         where = cfgs['where']
 
         ## transfer dicts to df
+        DataTransformerObj = DataTransformer(self.logger)
         dicts2df_args = {
             'data': data
         }
-        df = DataTransformerObj.dicts2df(contex, dicts2df_args)
+        df = DataTransformerObj.dicts2df(context, dicts2df_args)['data']
         try:
             ## check db connection
-            if not self.cur:
+            cur = self._get_cur(context)
+            con = self._get_con(context)
+            if not cur:
                 self.logger.error({'status': 'No active cursor.'})
                 return {
                     'status': False
                 }
-    
+
             ## check if df is empty
             if df is None or df.empty:
                 self.logger.error({'status': 'DataFrame is empty.'})
                 return {
                     'status': False
                 }
-    
+
             ## only use first row for update
             row = df.iloc[0].where(pd.notna(df.iloc[0]), None)
-    
+
             ## validate columns
             missing_cols = [c for c in cols if c not in df.columns]
             if missing_cols:
@@ -488,33 +514,32 @@ class MySQL(object):
                 return {
                     'status': False
                 }
-    
+
             ## SET part
             set_clause = ", ".join(f"`{c}`=%s" for c in cols)
             values = [row[c] for c in cols]
-    
+
             sql = f"UPDATE `{table}` SET {set_clause} WHERE {where}"
-    
+
             ## debug
             self.logger.debug({'sql': '%s' % (sql)})
             self.logger.debug({'val': '%s' % (values)})
-    
+
             ## execute
-            self.cur.execute(sql, values)
-            self.con.commit()
-            self.logger.debug({'status': 'Updated %s rows in %s' % (self.cur.rowcount, table)})
+            cur.execute(sql, values)
+            con.commit()
+            self.logger.debug({'status': 'Updated %s rows in %s' % (cur.rowcount, table)})
             return {
                 'status': True
             }
-    
+
         ## error handling
         except Exception as e:
-            if self.con:
-                self.con.rollback()
+            con = self._get_con(context)
+            if con:
+                con.rollback()
 
             self.logger.error({'status': 'Error: %s' % (e)})
             return {
                 'status': False
             }
-
-    

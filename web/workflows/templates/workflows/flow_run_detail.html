@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Run #{{ run.id }} — {{ flow.flow_name }} - WorkFlow{% endblock %}
+{% block page_title %}Run #{{ run.id }} — {{ flow.flow_name }}{% endblock %}
+
+{% block top_actions %}
+<a href="{% url 'workflows:flow_run_history' flow.flow_name %}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-clock-history"></i> All Runs
+</a>
+<a href="{% url 'workflows:flow_edit' flow.flow_name %}" class="btn btn-sm btn-outline-primary ms-1">
+  <i class="bi bi-pencil"></i> Edit
+</a>
+<a href="{% url 'workflows:flow_list' %}" class="btn btn-sm btn-outline-secondary ms-1">
+  <i class="bi bi-arrow-left"></i> Back
+</a>
+{% endblock %}
+
+{% block extra_css %}
+<!-- Drawflow CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.59/dist/drawflow.min.css">
+<!-- Visual Editor base CSS (node styles) -->
+<link rel="stylesheet" href="{% static 'css/visual_editor.css' %}">
+<!-- Run Viewer CSS -->
+<link rel="stylesheet" href="{% static 'css/run_viewer.css' %}">
+{% endblock %}
+
+{% block content %}
+<!-- Run Header -->
+<div class="run-header-card">
+  <div class="run-meta">
+    <div class="run-meta-item">
+      <strong>Status:</strong>
+      <span class="run-status-badge status-{{ run.status }}">
+        {% if run.status == 'success' %}<i class="bi bi-check-lg"></i>{% elif run.status == 'failed' %}<i class="bi bi-x-lg"></i>{% elif run.status == 'running' %}<i class="bi bi-arrow-repeat"></i>{% endif %}
+        {{ run.status|title }}
+      </span>
+    </div>
+    <div class="run-meta-item">
+      <strong>Duration:</strong>
+      {% if run.duration_ms is not None %}
+        {% if run.duration_ms < 1000 %}{{ run.duration_ms }}ms{% elif run.duration_ms < 60000 %}{{ run.duration_ms|floatformat:0 }}ms{% else %}{{ run.duration_ms|floatformat:0 }}ms{% endif %}
+      {% else %}—{% endif %}
+    </div>
+    <div class="run-meta-item">
+      <strong>Triggered by:</strong> {{ run.trigger_by|default:"—" }}
+    </div>
+    <div class="run-meta-item">
+      <strong>Started:</strong> {{ run.start_time|date:"Y-m-d H:i:s" }}
+    </div>
+    {% if run.end_time %}
+    <div class="run-meta-item">
+      <strong>Ended:</strong> {{ run.end_time|date:"Y-m-d H:i:s" }}
+    </div>
+    {% endif %}
+    {% if run.error_msg %}
+    <div class="run-meta-item text-danger" style="flex-basis:100%;">
+      <strong>Error:</strong> {{ run.error_msg }}
+    </div>
+    {% endif %}
+    {% if using_snapshot %}
+    <div class="run-meta-item">
+      <small class="text-muted"><i class="bi bi-clock-history"></i> Showing flow version at run time</small>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Run Viewer (Visual + Step Results) -->
+<div class="run-viewer-wrapper">
+  <!-- Left: Drawflow Canvas (read-only) -->
+  <div class="run-viewer-canvas" id="run-viewer-canvas">
+    <div id="run-drawflow" style="width:100%;height:100%;"></div>
+    <!-- Zoom toolbar -->
+    <div class="canvas-toolbar">
+      <button type="button" id="btn-rv-zoom-in" title="Zoom In"><i class="bi bi-zoom-in"></i></button>
+      <button type="button" id="btn-rv-zoom-out" title="Zoom Out"><i class="bi bi-zoom-out"></i></button>
+      <button type="button" id="btn-rv-zoom-reset" title="Reset Zoom"><i class="bi bi-arrows-fullscreen"></i></button>
+    </div>
+  </div>
+
+  <!-- Right: Step Results Panel -->
+  <div class="run-step-panel">
+    <div class="run-step-panel-header">
+      <i class="bi bi-list-check"></i> Step Results ({{ steps|length }})
+    </div>
+    {% for step in steps %}
+    <div class="step-result-item" data-step="{{ step.step_name }}" onclick="RunViewer_selectStep(this)">
+      <div class="step-result-header">
+        <span class="step-result-name">{{ step.step_name }}</span>
+        <span class="step-result-status status-{{ step.status }}">{{ step.status }}</span>
+        <span class="step-result-duration">
+          {% if step.duration_ms is not None %}
+            {{ step.duration_ms }}ms
+          {% endif %}
+        </span>
+        {% if step.result_data_display %}
+        <button class="btn step-expand-btn ms-auto" style="font-size:11px;padding:1px 6px;flex-shrink:0;"
+                data-step="{{ step.step_name }}"
+                data-content="{{ step.result_data_display|escape }}">
+          <i class="bi bi-arrows-fullscreen"></i>
+        </button>
+        {% endif %}
+      </div>
+      {% if step.result_data_display %}
+      <div class="step-result-data">
+        <pre>{{ step.result_data_display }}</pre>
+      </div>
+      {% endif %}
+      {% if step.error_msg %}
+      <div class="step-result-error">
+        <i class="bi bi-exclamation-triangle"></i> {{ step.error_msg }}
+      </div>
+      {% endif %}
+    </div>
+    {% empty %}
+    <div class="text-center text-muted py-4">
+      <i class="bi bi-info-circle"></i> No step data recorded.
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Runlog Table -->
+<div class="card mt-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-clock-history"></i> Recent Runs — {{ flow.flow_name }}</span>
+    <a href="{% url 'workflows:flow_run_history' flow.flow_name %}" class="btn btn-sm btn-outline-secondary">View All</a>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0">
+      <thead>
+        <tr>
+          <th style="width:8%">#</th>
+          <th style="width:12%">Status</th>
+          <th style="width:12%">Duration</th>
+          <th style="width:15%">Triggered By</th>
+          <th style="width:22%">Started</th>
+          <th style="width:22%">Ended</th>
+          <th style="width:9%">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in runs_page_obj %}
+        <tr{% if h.id == run.id %} class="table-active"{% endif %}>
+          <td>{{ h.id }}</td>
+          <td>
+            <span class="run-status-badge status-{{ h.status }}">
+              {% if h.status == 'success' %}<i class="bi bi-check-lg"></i>{% elif h.status == 'failed' %}<i class="bi bi-x-lg"></i>{% elif h.status == 'running' %}<i class="bi bi-arrow-repeat"></i>{% endif %}
+              {{ h.status }}
+            </span>
+          </td>
+          <td>{% if h.duration_ms is not None %}{{ h.duration_ms }}ms{% else %}—{% endif %}</td>
+          <td>{{ h.trigger_by|default:"—" }}</td>
+          <td><small>{{ h.start_time|date:"Y-m-d H:i:s" }}</small></td>
+          <td><small>{% if h.end_time %}{{ h.end_time|date:"Y-m-d H:i:s" }}{% else %}—{% endif %}</small></td>
+          <td>
+            <a href="{% url 'workflows:flow_run_detail' flow.flow_name h.id %}" class="btn btn-sm btn-outline-primary btn-action">
+              <i class="bi bi-eye"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if runs_page_obj.paginator.num_pages > 1 %}
+  <div class="card-footer d-flex justify-content-center py-2">
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {% if runs_page_obj.has_previous %}
+        <li class="page-item">
+          <a class="page-link" href="?runs_page={{ runs_page_obj.previous_page_number }}">&#8249;</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">&#8249;</span></li>
+        {% endif %}
+        {% for num in runs_page_obj.paginator.page_range %}
+          {% if num == runs_page_obj.number %}
+          <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+          {% elif num == 1 or num == runs_page_obj.paginator.num_pages or num >= runs_page_obj.number|add:"-2" and num <= runs_page_obj.number|add:"2" %}
+          <li class="page-item"><a class="page-link" href="?runs_page={{ num }}">{{ num }}</a></li>
+          {% elif num == runs_page_obj.number|add:"-3" or num == runs_page_obj.number|add:"3" %}
+          <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endfor %}
+        {% if runs_page_obj.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="?runs_page={{ runs_page_obj.next_page_number }}">&#8250;</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">&#8250;</span></li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Step Expand Modal -->
+<div class="modal fade" id="stepExpandModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="stepExpandTitle">Step Result</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-2">
+        <pre id="stepExpandPre" style="max-height:75vh;overflow-y:auto;font-size:12px;margin:0;white-space:pre-wrap;word-break:break-all;"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Drawflow JS -->
+<script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.59/dist/drawflow.min.js"></script>
+
+<!-- Module Registry + Run Viewer JS -->
+<script src="{% static 'js/module_registry.js' %}"></script>
+<script src="{% static 'js/run_viewer.js' %}"></script>
+<script>
+(function () {
+    var procedures = {{ procedures_json|safe }};
+    var stepResults = {{ step_results_json|safe }};
+
+    // helper: click on step panel item to highlight
+    window.RunViewer_selectStep = function (el) {
+        document.querySelectorAll('.step-result-item').forEach(function (item) {
+            item.classList.remove('active');
+        });
+        el.classList.add('active');
+    };
+
+    // load module registry, then init viewer
+    ModuleRegistry.loadFromAPI(function () {
+        RunViewer.init('run-drawflow', procedures, stepResults);
+    });
+
+    // step expand modal
+    document.querySelectorAll('.step-expand-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var stepName = btn.getAttribute('data-step');
+            var raw = btn.getAttribute('data-content');
+            var content;
+            try { content = JSON.stringify(JSON.parse(raw), null, 2); } catch(e) { content = raw || ''; }
+            document.getElementById('stepExpandTitle').textContent = 'Step Result — ' + stepName;
+            document.getElementById('stepExpandPre').textContent = content;
+            new bootstrap.Modal(document.getElementById('stepExpandModal')).show();
+        });
+    });
+})();
+</script>
+{% endblock %}

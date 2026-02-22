@@ -1,0 +1,58 @@
+<!-- Pagination Bar -->
+<div class="d-flex align-items-center justify-content-between mt-2 flex-wrap gap-2" style="font-size:14px;">
+  <div class="d-flex align-items-center gap-2">
+    <span class="text-secondary">{{ total_count }} total</span>
+    <select id="per-page-select" class="form-select" style="width:auto;min-width:110px;font-size:14px;">
+      <option value="20" {% if per_page == 20 %}selected{% endif %}>20 / page</option>
+      <option value="50" {% if per_page == 50 %}selected{% endif %}>50 / page</option>
+      <option value="100" {% if per_page == 100 %}selected{% endif %}>100 / page</option>
+      <option value="500" {% if per_page == 500 %}selected{% endif %}>500 / page</option>
+      <option value="1000" {% if per_page == 1000 %}selected{% endif %}>1000 / page</option>
+    </select>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <nav>
+    <ul class="pagination mb-0">
+      {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if filter_query %}&{{ filter_query }}{% endif %}">&#8249;</a>
+      </li>
+      {% else %}
+      <li class="page-item disabled"><span class="page-link">&#8249;</span></li>
+      {% endif %}
+
+      {% for num in page_obj.paginator.page_range %}
+        {% if num == page_obj.number %}
+        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+        {% elif num == 1 or num == page_obj.paginator.num_pages or num >= page_obj.number|add:"-2" and num <= page_obj.number|add:"2" %}
+        <li class="page-item"><a class="page-link" href="?page={{ num }}&per_page={{ per_page }}{% if filter_query %}&{{ filter_query }}{% endif %}">{{ num }}</a></li>
+        {% elif num == page_obj.number|add:"-3" or num == page_obj.number|add:"3" %}
+        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+        {% endif %}
+      {% endfor %}
+
+      {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if filter_query %}&{{ filter_query }}{% endif %}">&#8250;</a>
+      </li>
+      {% else %}
+      <li class="page-item disabled"><span class="page-link">&#8250;</span></li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+</div>
+
+<script>
+(function() {
+  var sel = document.getElementById('per-page-select');
+  if (!sel) return;
+  sel.addEventListener('change', function() {
+    var params = new URLSearchParams(window.location.search);
+    params.set('page', '1');
+    params.set('per_page', this.value);
+    window.location = '?' + params.toString();
+  });
+})();
+</script>

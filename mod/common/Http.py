@@ -14,7 +14,7 @@ Responsibilities:
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import buildin pkgs
@@ -126,11 +126,11 @@ class Http(object):
 
         Args:
             url (str): Target URL
-            headers (dict): Optional request headers
-            params (dict): Optional query string parameters
-            timeout (int): Optional request timeout in seconds
-            auth (dict): Optional basic auth with username/password
-            verify_ssl (bool): Optional SSL certificate verification
+            headers (dict): Optional request headers (default: {})
+            params (dict): Optional query string parameters (default: {})
+            timeout (int): Optional request timeout in seconds (default: 30)
+            auth (dict): Optional basic auth with username/password (default: null)
+            verify_ssl (bool): Optional SSL certificate verification (default: true)
 
         Returns:
             dict: Request result with status_code, data, headers
@@ -145,13 +145,13 @@ class Http(object):
 
         Args:
             url (str): Target URL
-            headers (dict): Optional request headers
-            params (dict): Optional query string parameters
-            json (dict): Optional JSON body
-            data (dict): Optional form data body
-            timeout (int): Optional request timeout in seconds
-            auth (dict): Optional basic auth with username/password
-            verify_ssl (bool): Optional SSL certificate verification
+            headers (dict): Optional request headers (default: {})
+            params (dict): Optional query string parameters (default: {})
+            json (dict): Optional JSON body (default: {})
+            data (dict): Optional form data body (default: null)
+            timeout (int): Optional request timeout in seconds (default: 30)
+            auth (dict): Optional basic auth with username/password (default: null)
+            verify_ssl (bool): Optional SSL certificate verification (default: true)
 
         Returns:
             dict: Request result with status_code, data, headers
@@ -166,13 +166,13 @@ class Http(object):
 
         Args:
             url (str): Target URL
-            headers (dict): Optional request headers
-            params (dict): Optional query string parameters
-            json (dict): Optional JSON body
-            data (dict): Optional form data body
-            timeout (int): Optional request timeout in seconds
-            auth (dict): Optional basic auth with username/password
-            verify_ssl (bool): Optional SSL certificate verification
+            headers (dict): Optional request headers (default: {})
+            params (dict): Optional query string parameters (default: {})
+            json (dict): Optional JSON body (default: {})
+            data (dict): Optional form data body (default: null)
+            timeout (int): Optional request timeout in seconds (default: 30)
+            auth (dict): Optional basic auth with username/password (default: null)
+            verify_ssl (bool): Optional SSL certificate verification (default: true)
 
         Returns:
             dict: Request result with status_code, data, headers
@@ -187,11 +187,11 @@ class Http(object):
 
         Args:
             url (str): Target URL
-            headers (dict): Optional request headers
-            params (dict): Optional query string parameters
-            timeout (int): Optional request timeout in seconds
-            auth (dict): Optional basic auth with username/password
-            verify_ssl (bool): Optional SSL certificate verification
+            headers (dict): Optional request headers (default: {})
+            params (dict): Optional query string parameters (default: {})
+            timeout (int): Optional request timeout in seconds (default: 30)
+            auth (dict): Optional basic auth with username/password (default: null)
+            verify_ssl (bool): Optional SSL certificate verification (default: true)
 
         Returns:
             dict: Request result with status_code, data, headers

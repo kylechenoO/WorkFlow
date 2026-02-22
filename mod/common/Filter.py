@@ -15,7 +15,7 @@ Responsibilities:
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import buildin pkgs
@@ -49,8 +49,8 @@ class Filter(object):
         Filter rows by conditions. All conditions are evaluated with AND logic.
 
         Args:
-            data (list): List of dicts to filter
-            conditions (list): List of condition dicts, each with col, op, value
+            data (ref): List of dicts to filter
+            conditions (list): List of condition dicts, each with col, op, value (default: [])
 
         Supported operators:
             eq, ne, gt, gte, lt, lte, in, not_in, contains, not_contains
@@ -137,10 +137,10 @@ class Filter(object):
         Select, rename, or drop columns from a list of dicts.
 
         Args:
-            data (list): List of dicts
-            cols (list): Optional columns to keep (whitelist)
-            rename (dict): Optional column rename mapping {old: new}
-            drop (list): Optional columns to remove
+            data (ref): List of dicts
+            cols (list): Optional columns to keep (default: [])
+            rename (dict): Optional column rename mapping (default: {})
+            drop (list): Optional columns to remove (default: [])
 
         Returns:
             dict: Transformed data with count
@@ -226,9 +226,9 @@ class Filter(object):
         Sort a list of dicts by one or more columns.
 
         Args:
-            data (list): List of dicts
-            by (str or list): Column name(s) to sort by
-            ascending (bool or list): Sort direction(s), default True
+            data (ref): List of dicts
+            by (str): Column name to sort by
+            ascending (bool): Optional sort direction (default: true)
 
         Returns:
             dict: Sorted data with count
@@ -281,8 +281,8 @@ class Filter(object):
         Remove duplicate rows from a list of dicts.
 
         Args:
-            data (list): List of dicts
-            cols (list): Optional columns to check for duplicates (all if omitted)
+            data (ref): List of dicts
+            cols (list): Optional columns to check for duplicates (default: [])
 
         Returns:
             dict: Deduplicated data with count
@@ -343,9 +343,9 @@ class Filter(object):
         Slice a list of dicts with offset and count.
 
         Args:
-            data (list): List of dicts
-            count (int): Number of rows to return
-            offset (int): Starting offset, default 0
+            data (ref): List of dicts
+            count (int): Optional number of rows to return (default: 10)
+            offset (int): Optional starting offset (default: 0)
 
         Returns:
             dict: Sliced data with count

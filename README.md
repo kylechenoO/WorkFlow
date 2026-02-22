@@ -1,690 +1,1128 @@
-# Workflow Framework
+# WorkFlow
 
-**Author:** Kyle
+**Author:** Kyle · **Version:** 0.0.2 · **License:** MIT
 
-**Created:** 20251224
+A Python-based **workflow automation platform** built on JSON-defined flows, dynamic module loading, and a full-featured web UI for managing, executing, and monitoring workflows at scale.
 
-**License:** MIT
-
-**Maintainer:** Kyle
-
-A lightweight Python workflow execution framework based on **JSON-defined flows**, **explicit procedure dependencies**, and **centralized system services**.
-
-This framework is designed to be:
-
-* Clear and predictable
-* Explicit in data flow
-* Deterministic in execution order
-* Easy to extend
-* Production-friendly with strong observability
+> **Clarity first · Correctness always · Complexity last**
 
 ---
 
-## 1. Overview
+## Table of Contents
 
-A **workflow** is a sequence of procedures executed in a predefined order.
-
-Each procedure:
-
-* Receives input parameters
-* Executes business logic
-* Returns a structured result (`dict`)
-
-Procedures exchange data through a shared **execution context**, which is managed entirely by the workflow engine.
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [Quick Start](#quick-start)
+- [Configuration Reference](#configuration-reference)
+- [Web UI](#web-ui)
+- [REST API](#rest-api)
+- [CLI Reference](#cli-reference)
+- [Workflow JSON Format](#workflow-json-format)
+- [Module Reference](#module-reference)
+- [Database Schema](#database-schema)
+- [Security Considerations](#security-considerations)
+- [Testing](#testing)
+- [Design Principles](#design-principles)
+- [Changelog](#changelog)
+- [License](#license)
 
 ---
 
-## 2. System Architecture
+## Features
 
-### 2.1 High-Level Architecture
+- **JSON-defined workflows** — declare procedures, parameters, and data flow in plain JSON
+- **Triple-mode workflow editor** — Form, Visual (drag-and-drop canvas), and JSON modes with bidirectional sync
+- **16 built-in modules** — Bash, HTTP, SSH, File I/O, MySQL, MongoDB, Kafka, Elasticsearch, Prometheus, Notify, Filter, MultiProcess, and more
+- **Cluster failover modules** — MySQLCluster and MongoDBCluster with automatic node failover
+- **Custom module editor** — write Python procedure modules directly in the browser with version history
+- **Run history & step viewer** — per-run execution timeline with step-level timing, results, and errors
+- **Version control** — every workflow and module edit is versioned; diff and restore at any point
+- **Role-based access control** — granular page + action permissions via Groups and Roles
+- **Audit log** — every user action captured with IP, timestamp, and change detail
+- **System admin** — timezone, backup/restore, SSL configuration, services management, API key management, and developer tools
+- **Developer tools** — built-in REST client and SQL query tool
+- **Backup & restore** — export/import workflows, modules, accounts, and settings as ZIP
+- **SSL management** — upload server certificates and trusted CA certificates
+- **Services management** — view, configure, and restart backend/frontend services from the UI
+- **Flask REST API** — full programmatic control (port 5001)
+- **Django web frontend** — browser-based management UI (port 5002)
+- **CLI interface** — manage and run workflows from the command line
+
+---
+
+## Screenshots
+
+### Login
+![Login](screenshots/login.png)
+
+### Dashboard
+![Dashboard](screenshots/dashboard.png)
+
+### Workflow List
+![Workflow List](screenshots/workflow_list.png)
+
+### Workflow Editor — Visual Mode
+![Workflow Editor Visual](screenshots/workflow_editor_visual.png)
+
+### Workflow Editor — JSON Mode
+![Workflow Editor JSON](screenshots/workflow_editor_json.png)
+
+### Module Registry
+![Modules](screenshots/modules.png)
+
+### Module Editor
+![Module Editor](screenshots/module_editor.png)
+
+### Run Log
+![Run Log](screenshots/runlog.png)
+
+### System Log
+![Syslog](screenshots/syslog.png)
+
+### Audit Log
+![Audit Log](screenshots/audit_log.png)
+
+### User Management
+![Users](screenshots/users.png)
+
+### Group Management
+![Groups](screenshots/groups.png)
+
+### Role Management
+![Roles](screenshots/roles.png)
+
+### Profile
+![Profile](screenshots/profile.png)
+
+### System Admin
+![System](screenshots/system.png)
+
+### Timezone Settings
+![Timezone](screenshots/timezone.png)
+
+### Version Info
+![Version](screenshots/version.png)
+
+### License
+![License](screenshots/license.png)
+
+### Backup & Restore
+![Backup](screenshots/backup.png)
+
+### OpenAPI Key Management
+![OpenAPI](screenshots/openapi.png)
+
+### Developer Tools — REST Client
+![Devtool REST](screenshots/devtool_rest.png)
+
+### Developer Tools — SQL Query
+![Devtool SQL](screenshots/devtool_sql.png)
+
+### SSL Configuration
+![SSL](screenshots/ssl.png)
+
+### Services Management
+![Services](screenshots/services.png)
+
+---
+
+## Architecture
 
 ```
-+--------------------------------------------------+
-|                  WorkFlow.py                     |
-|               (Program Entry Point)              |
-+-------------------------+------------------------+
-                          |
-                          v
-        +-----------------+------------------+
-        |   System Initialization            |
-        |------------------------------------|
-        |  Load configuration                |
-        |  Initialize Log Object             |
-        |  Initialize Database Connection    |
-        |  Attach MySQL Log Handler          |
-        +-----------------+------------------+
-                          |
-                          v
-        +-----------------+------------------+
-        |            Flow Engine             |
-        |           (lib/Flow.py)            |
-        +-----------------+------------------+
-                          |
-                          v
-        +-----------------+------------------+
-        |              Context               |
-        |     (In-memory execution state)    |
-        +-----------------+------------------+
-                          |
-                          v
-        +-----------------+------------------+
-        |      Procedure Execution Loop      |
-        |------------------------------------|
-        |  Resolve parameters                |
-        |  Execute procedures                |
-        |  Store result into context         |
-        +------------------------------------+
-```
+┌─────────────────────────────────────────────────────┐
+│                    WorkFlow.py                       │
+│              (CLI + Flask REST API)                  │
+└──────────────────────┬──────────────────────────────┘
+                       │
+          ┌────────────▼────────────┐
+          │   System Initialization │
+          │  Config · Log · MySQL   │
+          └────────────┬────────────┘
+                       │
+          ┌────────────▼────────────┐
+          │      Flow Engine        │
+          │      lib/Flow.py        │
+          └────────────┬────────────┘
+                       │
+          ┌────────────▼────────────┐
+          │   Procedure Execution   │
+          │  resolve → load → call  │
+          │   store result → next   │
+          └─────────────────────────┘
 
-Arrows indicate **control flow and execution order**, not data coupling.
+┌─────────────────────────────────────────────────────┐
+│              Django Web Frontend                     │
+│  Dashboard · Workflows · Modules · Accounts          │
+│  Audit · Syslog · System (port 5002)                │
+└──────────────────────┬──────────────────────────────┘
+                       │ calls
+          ┌────────────▼────────────┐
+          │   Flask REST API        │
+          │   (port 5001)           │
+          └─────────────────────────┘
+                       │
+          ┌────────────▼────────────┐
+          │        MySQL            │
+          │   wf_flow · wf_syslog   │
+          │  wf_run_history · etc.  │
+          └─────────────────────────┘
+```
 
 ---
 
-## 3. Project Structure
+## Project Structure
 
 ```
 WorkFlow/
-├── bin/                     # bin path
-│   ├── WorkFlow.py          # Program entry point (CLI + REST API)
-│   └── service.sh           # Gunicorn service startup script
-├── lib/                     # lib path
-│   ├── Flow.py              # Workflow execution engine
-│   ├── Config.py            # Configuration loader
-│   ├── Log.py               # Logging lib
-│   └── MySQL.py             # MySQL connection & access layer
-├── mod/                     # mod path
-│   ├── common/              # common modules
-│   │   ├── Kt.py            # Example procedure module
-│   │   ├── DataTransformer.py # Dict list ↔ DataFrame conversion
-│   │   ├── Filter.py        # Dict list filtering & transformation
-│   │   ├── Http.py          # HTTP client (GET/POST/PUT/DELETE)
-│   │   ├── FileIO.py        # File read/write (CSV/JSON/Excel/YAML)
-│   │   ├── Notify.py        # Email (SMTP) + Webhook notifications
-│   │   ├── Ssh.py           # SSH remote commands + SFTP transfer
-│   │   └── MultiProcess.py  # Parallel steps + parallel data processing
-│   ├── mysql/               # MySQL procedure module
-│   │   └── MySQL.py         # MySQL CRUD operations
-│   ├── elasticsearch/       # Elasticsearch procedure module
-│   │   └── ElasticSearch.py # Elasticsearch CRUD + Search operations
-│   └── prometheus/          # Prometheus procedure module
-│       └── Prometheus.py    # Prometheus metrics operations
-├── web/                     # Django web frontend
-│   ├── manage.py            # Django management CLI
-│   ├── service_django.sh    # Django dev server startup script
-│   ├── wfsite/              # Django project settings
-│   ├── dashboard/           # Dashboard app (home page)
-│   ├── accounts/            # User/Group/Role management app
-│   ├── audit/               # Audit logging app
-│   ├── syslog_viewer/       # Syslog viewer app
-│   ├── workflows/           # Workflow management + editor app
-│   ├── templates/           # Shared templates (base.html)
-│   └── static/              # CSS + JS (style.css, flow_editor.js)
-├── etc/                     # config path
-│   ├── global.json          # Global configuration (JSON5)
-│   └── service.conf         # Gunicorn service settings
-├── tools/                   # utility scripts
+├── bin/
+│   ├── WorkFlow.py              # Entry point: CLI + Flask REST API
+│   └── service.sh               # Service manager (start/stop/restart/status)
+├── lib/
+│   ├── Flow.py                  # Workflow execution engine
+│   ├── Config.py                # Configuration loader (JSON5)
+│   ├── Log.py                   # Logging: console + file + MySQL
+│   ├── MySQL.py                 # MySQL connection & access layer
+│   └── ModuleInspector.py       # Module introspection for editor
+├── mod/
+│   ├── common/
+│   │   ├── Bash.py              # Local shell command execution
+│   │   ├── Kt.py                # Example/test module
+│   │   ├── DataTransformer.py   # Dict list ↔ DataFrame
+│   │   ├── Filter.py            # Filter, sort, dedup, select, limit
+│   │   ├── Http.py              # HTTP client (GET/POST/PUT/DELETE)
+│   │   ├── FileIO.py            # File read/write (CSV/JSON/Excel/YAML)
+│   │   ├── Notify.py            # Email (SMTP) + Webhook
+│   │   ├── Ssh.py               # SSH commands + SFTP transfer
+│   │   └── MultiProcess.py      # Parallel steps + parallel data
+│   ├── mysql/
+│   │   └── MySQL.py             # MySQL CRUD operations
+│   ├── mongodb/
+│   │   └── MongoDB.py           # MongoDB CRUD + TLS support
+│   ├── mysqlcluster/
+│   │   └── MySQLCluster.py      # MySQL cluster with failover
+│   ├── mongodbcluster/
+│   │   └── MongoDBCluster.py    # MongoDB cluster with failover
+│   ├── kafkaclient/
+│   │   └── Kafka.py             # Kafka producer/consumer
+│   ├── elasticsearchclient/
+│   │   └── ElasticSearch.py     # Elasticsearch CRUD + Search
+│   └── prometheus/
+│       └── Prometheus.py        # Prometheus metrics push + export
+├── web/
+│   ├── manage.py
+│   ├── wfsite/                  # Django project settings
+│   ├── dashboard/               # Home page with stats
+│   ├── accounts/                # User / Group / Role management
+│   ├── audit/                   # Audit log viewer
+│   ├── syslog_viewer/           # System log viewer
+│   ├── workflows/               # Workflow editor + run history
+│   ├── modules/                 # Module editor + registry
+│   ├── system/                  # System admin (backup, devtool, SSL, services, API keys)
+│   ├── templates/               # Shared base template
+│   └── static/                  # CSS + JS assets
+├── etc/
+│   ├── global.json              # Global configuration (JSON5)
+│   └── service.conf             # Gunicorn service settings
+├── tools/
+│   ├── workflow.ddl.sql         # Database schema
+│   └── initdb.sh                # Database initializer
+├── test/
+│   ├── test.md                  # Test cases (303 total)
+│   └── screenshots/             # UI screenshots
+├── pyproject.toml
+├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## 4. System Modules
+## Quick Start
 
-### 4.1 Program Entry (`WorkFlow.py`)
+### Prerequisites
 
-Responsibilities:
+- **Linux** — Ubuntu 20.04+ or CentOS 7+
+- **miniforge** — Python 3.10+ runtime ([install guide](https://github.com/kylechenoO/miniforge))
+- **MySQL 8.0+**
 
-* Load global configuration
-* Initialize **Log Object**
-* Initialize **database connection**
-* Attach MySQL log handler
-* Create Flow engine
-* Trigger workflow execution (CLI or REST API)
+#### Install miniforge
 
-Supports two modes:
-
-* **CLI mode** — execute workflows and manage flows from command line
-* **REST API mode** — serve workflows as a web service via Flask + gunicorn
-
-Initialization sequence:
-
-```
-Load configuration
-    ↓
-Initialize Log Object
-    ↓
-Initialize Database Connection
-    ↓
-Attach MySQL Log Handler
-    ↓
-Execute Flow (CLI) or Start API Server (REST)
+```bash
+git clone https://github.com/kylechenoO/miniforge.git
+cd miniforge
+sudo ./install_miniforge.sh
+/opt/miniforge/bin/python -V   # verify
 ```
 
----
+#### Create project virtualenv
 
-### 4.2 Logging System (`lib/Log.py`)
-
-The logging system is encapsulated as a **Log Object**.
-
-Features:
-
-* Console logging
-* Rotating file logging
-* MySQL logging
-* Unified log format
-
-Log format example:
-
-```
-2025-12-19 08:39:02.002 DEBUG Flow execFlow start
+```bash
+cd /path/to/WorkFlow
+/opt/miniforge/bin/python -m venv .
+source bin/activate
 ```
 
-Formatter definition:
+### 1. Database Setup
 
-```
-%(asctime)s %(levelname)s %(module)s %(funcName)s %(message)s
-```
+```bash
+# Create tables
+mysql -u root -p < tools/workflow.ddl.sql
 
-Design notes:
-
-* Log Object is initialized **before** database connection
-* MySQL logging is attached **after** database connection is available
-* Logging failures must never interrupt workflow execution
-
----
-
-### 4.3 Database Access Layer (`lib/MySQL.py`)
-
-Responsibilities:
-
-* Initialize MySQL connections
-* Execute SQL statements
-* Manage transactions (commit / rollback)
-* Provide database access to Flow engine and logging system
-
-Important clarification:
-
-> This module **only initializes database connections**.
-> It does **not** create databases or modify table structures.
-
----
-
-## 5. Core Concepts
-
-### 5.1 Procedures
-
-A **procedures** represents one execution step in a workflow.
-
-Procedures method signature:
-
-```python
-def method(self, context: dict, params: dict) -> dict
+# Or use initdb.sh
+./tools/initdb.sh
 ```
 
-Rules:
+### 2. Configuration
 
-* `params` contains resolved input parameters
-* `context` represents workflow execution state
-* Return value **must be a dict**
+Edit `etc/global.json`:
 
----
-
-### 5.2 Context
-
-`context` is an **in-memory execution data store**.
-
-It is used to:
-
-* Store results of completed procedures
-* Provide data to downstream procedures
-* Maintain runtime state during execution
-
-Example:
-
-```python
-context = {
-    "step1": {"msg": "hello"},
-    "_runtime": {
-        "start_time": "2025-12-19T08:39:02"
-    }
+```json5
+{
+  db: {
+    host: "127.0.0.1",
+    port: 3306,
+    username: "workflow",
+    password: "your_password",      // change this
+    database: "workflow",
+    charset: "utf8mb4"
+  },
+  log: {
+    path: "log/",
+    file: "workflow.log",
+    table: "wf_syslog",
+    level: "INFO",
+    rotate: { max_size: 10485760, backup_count: 5 }
+  },
+  lib: { path: "lib/" },
+  mod: { path: "mod/" },
+  flow: { table: "wf_flow" },
+  api: { host: "0.0.0.0", port: 5001, debug: false },
+  web: { secret_key: "change-me-in-production", debug: false, port: 5002 }
 }
 ```
 
-Rules:
+> **Important:** Change `db.password` and `web.secret_key` before deploying to production. The defaults are development placeholders only.
 
-* `context[procedure_name]` stores procedure output
-* Keys starting with `_` are system-reserved
-* Pasks should not modify results of other procedures
+### 3. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+cd web && python manage.py migrate
+```
+
+### 4. Start Services
+
+**Production (gunicorn):**
+```bash
+./bin/service.sh start             # Start both backend + frontend
+./bin/service.sh start backend     # Flask REST API → http://localhost:5001
+./bin/service.sh start frontend    # Django Web UI → http://localhost:5002
+./bin/service.sh status            # Check service status
+./bin/service.sh restart           # Restart both services
+```
+
+**Development:**
+```bash
+python bin/WorkFlow.py --serve                     # Flask API
+cd web && python manage.py runserver 0.0.0.0:5002  # Django UI
+```
+
+### 5. First Login
+
+Navigate to `http://localhost:5002` and log in with the admin account created during `migrate`.
 
 ---
 
-## 6. Flow Definition (JSON)
+## Configuration Reference
 
-Flows are defined using **standard JSON** and stored in the database.
+`etc/global.json` uses **JSON5** format (unquoted keys, trailing commas, comments allowed).
 
-### Example Flow JSON
+| Key | Description |
+|-----|-------------|
+| `db.host` | MySQL host |
+| `db.port` | MySQL port (default: 3306) |
+| `db.username` | MySQL username |
+| `db.password` | MySQL password |
+| `db.database` | Database name |
+| `db.charset` | Character set (default: utf8mb4) |
+| `log.path` | Log file directory |
+| `log.file` | Log filename |
+| `log.table` | MySQL log table name |
+| `log.level` | Log level: DEBUG / INFO / WARNING / ERROR |
+| `log.rotate.max_size` | Max log file size in bytes before rotation |
+| `log.rotate.backup_count` | Number of rotated files to keep |
+| `lib.path` | Core library path |
+| `mod.path` | Procedure module path |
+| `flow.table` | Workflow definition table name |
+| `api.host` | Flask API bind address |
+| `api.port` | Flask API port (default: 5001) |
+| `api.debug` | Flask debug mode |
+| `web.secret_key` | Django secret key (change in production) |
+| `web.debug` | Django debug mode |
+| `web.port` | Django port (default: 5002) |
+
+Service settings (`etc/service.conf`):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BACKEND_HOST` | `0.0.0.0` | Flask API bind address |
+| `BACKEND_PORT` | `5001` | Flask API port |
+| `BACKEND_WORKERS` | `1` | Gunicorn workers (keep at 1 for APScheduler) |
+| `BACKEND_THREADS` | `4` | Threads per worker |
+| `FRONTEND_HOST` | `0.0.0.0` | Django bind address |
+| `FRONTEND_PORT` | `5002` | Django port |
+| `FRONTEND_WORKERS` | `4` | Gunicorn workers |
+| `FRONTEND_THREADS` | `4` | Threads per worker |
+
+### Changing Ports
+
+**Via Web UI (recommended):**
+
+1. Navigate to **System → Services**
+2. Click the pencil icon next to a service's Configuration card
+3. Change `BACKEND_PORT` or `FRONTEND_PORT`
+4. Click **Save** → click **Restart Now** to apply
+5. Both `etc/service.conf` and `etc/global.json` are updated automatically
+
+**Via Console:**
+
+1. Edit `etc/service.conf` — change `BACKEND_PORT` and/or `FRONTEND_PORT`
+2. Edit `etc/global.json` — update `api.port` and/or `web.port` to match
+3. Restart services:
+   ```bash
+   ./bin/service.sh restart backend    # restart Flask API
+   ./bin/service.sh restart frontend   # restart Django UI
+   ```
+
+> **Important:** Both config files must stay in sync. `service.conf` controls gunicorn bind ports; `global.json` controls the Django→Flask connection URL. The web UI auto-syncs both files, but manual edits require updating both.
+
+---
+
+## Web UI
+
+The Django web frontend runs on port **5002** and provides full management of the platform.
+
+### Navigation
+
+The collapsible left sidebar contains:
+
+- **Dashboard** — overview stats
+- **Automation:** Modules · Workflows · Runlog · Syslog
+- **Admin:** System · OpenAPI · Devtool · Auditlog
+
+Access to each section is controlled by the permission system.
+
+---
+
+### Dashboard (`/`)
+
+- Summary cards: total workflows, enabled/disabled counts
+- Recent workflows list (sorted by last updated) with pagination
+
+---
+
+### Workflows (`/workflows/`)
+
+#### Workflow List
+- Paginated list with per-workflow status, last run badge, run time, and updated timestamp
+- Actions per row: **Edit** · **Run** · **Enable/Disable** · **Runlog** · **Delete**
+- Search bar with client-side filtering
+
+#### Workflow Editor (`/workflows/<name>/edit/`)
+
+Three editing modes with **bidirectional sync**:
+
+| Mode | Description |
+|------|-------------|
+| **Form** | Structured step list — add/remove/reorder procedures with fields for name, module, method, and params |
+| **Visual** | Drawflow canvas — drag-and-drop procedure nodes with connection arrows |
+| **JSON** | CodeMirror editor — full JSON with syntax highlighting, bracket matching, and validation |
+
+Switching between tabs automatically syncs all three modes.
+
+#### Run History (`/workflows/<name>/runs/` and `/workflows/runs/`)
+
+- Per-workflow and global run history views
+- Filters: status · trigger type · date range · text search
+- Export to Excel (`.xlsx`)
+
+#### Run Detail (`/workflows/<name>/run/<id>/`)
+
+- Visual canvas showing the flow at execution time (snapshot)
+- Step-by-step panel: status badge, duration, result data (expandable JSON), error message
+- Run metadata: overall status, trigger, start/end time, duration
+- Recent runs sidebar for quick navigation
+
+#### Version History (`/workflows/<name>/versions/`)
+
+- Full version list with timestamps and author
+- View, diff (side-by-side), and restore any previous version
+
+---
+
+### Modules (`/modules/`)
+
+#### Module List
+- Grouped by category with expandable cards
+- Displays: module name, description, method count, last modified
+- Core modules (built-in) are protected from deletion
+- Actions: **Edit** · **Delete** · **Create Category** · **Rename Category**
+
+#### Module Editor (`/modules/<category>/<name>/edit/`)
+
+- Full-page CodeMirror Python editor with syntax highlighting
+- Live introspection sidebar: docstring, method list with signatures
+- Save creates a version snapshot automatically
+
+#### Module Version History
+- Same version, diff, and restore capabilities as workflows
+
+#### Module API (`/modules/api/registry/`)
+- JSON endpoint listing all modules and their methods
+- Used by the workflow editor for module/method selection dropdowns
+
+---
+
+### Accounts
+
+#### Users (`/accounts/users/`)
+- List all users with active/inactive status
+- Create, edit, enable/disable users
+- Assign Django Groups and custom Roles
+
+#### Groups (`/accounts/groups/`)
+- Create and manage permission groups
+- Assign permissions per group using the page + action grid
+- Protected groups: `admin`, `user`
+
+#### Roles (`/accounts/roles/`)
+- Custom role model extending Django groups
+- Assign permissions to roles; assign roles to users
+- Protected roles: `admin`, `user`
+
+#### Profile (`/accounts/profile/`)
+- View current user info, assigned groups and roles
+- Update name/email and change password
+
+#### Permission System
+
+Permissions use a `page.action` format. Available permissions:
+
+| Page | Actions |
+|------|---------|
+| `dashboard` | view |
+| `workflows` | view · create · edit · delete · enable · run |
+| `modules` | view · create · edit · delete |
+| `users` | view · create · edit · toggle |
+| `groups` | view · create · edit · delete |
+| `roles` | view · create · edit · delete |
+| `audit` | view |
+| `syslog` | view |
+| `system` | edit |
+| `devtool` | use |
+
+---
+
+### Audit Log (`/audit/`)
+
+- Captures every significant user action automatically
+- Filters: user · action type · target type · date range · text search
+- Logged fields: user, action, target type, target name, IP address, detail (JSON), timestamp
+- Action types: `create` · `update` · `delete` · `enable` · `disable` · `run` · `rename` · `login` · `logout`
+
+---
+
+### Syslog Viewer (`/syslog/`)
+
+- View runtime logs written by the workflow engine
+- Filters: log level · date range · text search
+- Levels: DEBUG · INFO · WARNING · ERROR · CRITICAL
+
+---
+
+### System Admin (`/system/`)
+
+The system section groups administrative settings in a tabbed layout.
+
+#### Timezone (`/system/timezone/`)
+- Select system timezone from 80+ curated options grouped by region
+- Shows current server time in the selected timezone
+
+#### Backup (`/system/backup/`)
+- Create a ZIP backup containing any combination of:
+  - Workflow definitions (JSON)
+  - Module source files (Python)
+  - User/group/role accounts
+  - System settings
+- Download immediately after creation
+
+#### Restore (`/system/backup/?tab=restore`)
+- Upload a previously created backup ZIP to restore selected sections
+
+#### SSL Configuration (`/system/ssl/`)
+- View HTTPS status (HTTP Only / HTTPS Enabled)
+- Upload server certificate and private key (`.crt`/`.pem` + `.key`/`.pem`)
+- Manage trusted CA certificates (upload and delete)
+- Toggle HTTPS on/off
+
+#### Services Management (`/system/services/`)
+- View backend (Flask API) and frontend (Django UI) service status
+- Start, stop, restart services from the UI
+- View and edit service configuration (host, port, workers, threads, timeout)
+- Live service log viewer
+- Read-only display of `global.json` configuration with masked passwords
+
+#### API Keys (`/system/apis/`)
+- Create named API keys for programmatic access to the REST API
+- Keys are hashed on creation; the plain key is shown once
+- Enable/disable and delete existing keys
+
+#### Developer Tools (`/system/devtool/`)
+
+**RESTFultool** — built-in HTTP client:
+- Method dropdown (GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS)
+- URL bar with Send · Clear · Export buttons
+- Headers and Body fields (JSON)
+- Response panel with status badge, duration, and formatted output
+- Export response as JSON or text
+
+**SQLtool** — read-only SQL query runner:
+- Execute SELECT, SHOW, DESCRIBE statements against the WorkFlow database
+- Results capped at 500 rows
+- Syntax: Run · Clear · Export buttons
+- Export results to Excel (`.xlsx`)
+
+#### Version (`/system/version/`)
+- Displays app name, version, author, and email from `pyproject.toml`
+
+#### License (`/system/license/`)
+- Displays the full LICENSE file content
+
+---
+
+## REST API
+
+The Flask REST API runs on port **5001** and provides programmatic workflow management.
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/flow` | List all workflows |
+| `GET` | `/flow/<name>` | Get workflow definition |
+| `POST` | `/flow` | Create workflow |
+| `PUT` | `/flow/<name>` | Update workflow |
+| `DELETE` | `/flow/<name>` | Soft-delete workflow |
+| `POST` | `/flow/<name>/run` | Execute workflow |
+| `PUT` | `/flow/<name>/enable` | Enable workflow |
+| `PUT` | `/flow/<name>/disable` | Disable workflow |
+| `PUT` | `/flow/<name>/rename` | Rename workflow |
+| `GET` | `/flow/<name>/runs` | List run history for a workflow |
+| `GET` | `/run/<run_id>` | Get run details with step results |
+| `GET` | `/backup` | Download full backup ZIP (requires `X-Api-Key` header) |
+
+### Authentication
+
+The `/backup` endpoint requires an API key in the `X-Api-Key` header. Keys are managed in the web UI under **System → OpenAPI**.
+
+> **Note:** Most API endpoints are designed for internal use and do not require authentication. Deploy behind a firewall or add an authentication layer for production use. See [Security Considerations](#security-considerations).
+
+---
+
+## CLI Reference
+
+```bash
+python bin/WorkFlow.py [OPTIONS]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-f <name>` | Execute workflow by name |
+| `-c <json>` | Create workflow from JSON string |
+| `-u <json>` | Update workflow definition |
+| `-r <json>` | Rename workflow: `{"current":"old","new":"new"}` |
+| `-t <name>` | Soft-delete workflow |
+| `-e <name>` | Enable workflow |
+| `-d <name>` | Disable workflow |
+| `-i <name>` | Get workflow info |
+| `-l` | List all workflows |
+| `-s` | Start Flask REST API server |
+
+---
+
+## Workflow JSON Format
+
+Workflows are stored as JSON in the database. A workflow contains a list of **procedures** (steps) executed sequentially.
 
 ```json
 {
   "procedures": [
     {
-      "name": "step1",
-      "mod": "common.Kt",
-      "method": "prt",
+      "name": "fetch",
+      "mod": "common.Http",
+      "method": "get",
       "params": {
-        "msg": "hello"
+        "url": "https://api.example.com/data",
+        "headers": {"Authorization": "Bearer token123"}
       }
     },
     {
-      "name": "step2",
-      "mod": "common.Kt",
-      "method": "prt",
+      "name": "save",
+      "mod": "common.FileIO",
+      "method": "write",
       "params": {
-        "msg": "@step1.msg"
+        "file_path": "/tmp/output.json",
+        "data": "@fetch.data"
+      }
+    },
+    {
+      "name": "notify",
+      "mod": "common.Notify",
+      "method": "webhook",
+      "params": {
+        "url": "https://hooks.slack.com/...",
+        "body": {"text": "Done. Saved @fetch.count rows."}
       }
     }
-  ]
-}
-```
-
----
-
-## 7. Data Flow Between Procedures
-
-### Execution Example
-
-```
-step1 returns {"msg": "hello"}
-
-Stored as:
-context["step1"]["msg"]
-
-Resolved reference:
-@step1.msg
-
-Passed to step2 as:
-{"msg": "hello"}
-```
-
-Key points:
-
-* Procedures do not directly depend on each other
-* All dependencies are declared in flow JSON
-* The Flow engine resolves dependencies centrally
-
----
-
-## 8. Parameter Reference Rules
-
-| Syntax      | Meaning                          |
-| ----------- | -------------------------------- |
-| `@step`     | Reference full procedure result  |
-| `@step.key` | Reference a specific key         |
-| `@@value`   | Literal string starting with `@` |
-| `value`     | Normal literal value             |
-
-Example:
-
-```json
-{
-  "params": {
-    "msg": "@step1.msg",
-    "email": "kk@gmail.com",
-    "raw": "@@example"
+  ],
+  "variables": {
+    "env": "production"
   }
 }
 ```
 
-Resolved parameters:
+### Parameter Reference Syntax
 
-```python
-{
-    "msg": "hello",
-    "email": "kk@gmail.com",
-    "raw": "@example"
-}
-```
+| Syntax | Resolves to |
+|--------|-------------|
+| `@step` | Full result dict of `step` |
+| `@step.key` | Specific key from `step`'s result |
+| `@@value` | Literal string `@value` (escaped) |
+| `value` | Literal string as-is |
+| `@var.name` | Workflow-level variable |
+
+### Procedure Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Unique step name; used as `@name` reference |
+| `mod` | Yes | Module path: `category.ClassName` |
+| `method` | Yes | Method name to call on the module class |
+| `params` | No | Key-value parameters passed to the method |
 
 ---
 
-## 9. Procedure Implementation Example
+## Module Reference
+
+All procedure modules follow this interface:
 
 ```python
-class Kt:
-    def __init__(self, logger) -> None:
+class MyModule:
+    def __init__(self, logger):
         self.logger = logger
 
-    def prt(self, context: dict, params: dict) -> dict:
-        msg = params["msg"]
-        self.logger.info("msg=%s", msg)
-        return {"msg": msg}
+    def my_method(self, context: dict, params: dict) -> dict:
+        # params: resolved input parameters
+        # context: full execution context (previous step results)
+        # returns: dict with at least {"status": True/False}
+        ...
 ```
 
 ---
 
-## 10. Database Design
+### `common.Bash` — Shell Execution
 
-### 10.1 Database Overview
+| Method | Key Params | Returns |
+|--------|-----------|---------|
+| `run` | `cmd` (str or list), `cwd`, `env` (dict), `timeout` (int), `shell` (bool, default True) | `{"status": True, "exit_code": N, "stdout": "...", "stderr": "..."}` |
 
-The database contains **independent tables** serving different purposes.
-
-There are **no foreign key relationships** between these tables.
-
----
-
-#### Workflow Definition Table
-
-```
-+----------------------+
-|   wf_flow            |
-|----------------------|
-| Flow configuration   |
-| Enable / Disable     |
-| Soft delete          |
-+----------------------+
-```
-
-Purpose:
-
-* Store workflow definitions
-* Act as the configuration source for the Flow engine
+> **Security note:** `shell=True` is the default to support piped and compound commands. Avoid passing untrusted user input directly as `cmd`. Use `shell=False` and a list for `cmd` when arguments come from external input.
 
 ---
 
-#### System Log Table
+### `common.Kt` — Test/Demo
 
-```
-+----------------------+
-|  wf_syslog           |
-|----------------------|
-| System logs          |
-| Execution logs       |
-| Audit & debug        |
-+----------------------+
-```
-
-Purpose:
-
-* Store runtime logs
-* Support observability and troubleshooting
-* Written by the logging system
+| Method | Description |
+|--------|-------------|
+| `prt1` | Log and return `msg` param |
+| `prt2` | Log and return `msg` param |
 
 ---
 
-### 10.2 Table Details
+### `common.DataTransformer` — DataFrame Conversion
+
+| Method | Key Params | Returns |
+|--------|-----------|---------|
+| `dicts2df` | `data` (list of dicts) | `{"status": True, "data": DataFrame}` |
+| `df2dicts` | `data` (DataFrame) | `{"status": True, "data": [...]}` |
+
+---
+
+### `common.Filter` — Data Transformation
+
+| Method | Key Params | Description |
+|--------|-----------|-------------|
+| `filter` | `data`, `conditions` | Filter rows by conditions (`eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `contains`, `not_contains`) |
+| `select` | `data`, `cols` / `rename` / `drop` | Keep, rename, or drop columns |
+| `sort` | `data`, `by`, `ascending` | Sort rows by one or more columns |
+| `dedup` | `data`, `cols` | Remove duplicate rows |
+| `limit` | `data`, `count`, `offset` | Slice rows with offset |
+
+All methods return `{"status": True, "data": [...], "count": N}`.
+
+---
+
+### `common.Http` — HTTP Client
+
+| Method | Key Params | Returns |
+|--------|-----------|---------|
+| `get` | `url`, `headers`, `params`, `timeout`, `auth`, `verify_ssl` | `{"status": True, "status_code": N, "data": {...}}` |
+| `post` | `url`, `json` / `data`, `headers`, `timeout` | same |
+| `put` | `url`, `json` / `data`, `headers`, `timeout` | same |
+| `delete` | `url`, `headers`, `timeout` | same |
+
+---
+
+### `common.FileIO` — File I/O
+
+Supported formats: **CSV**, **JSON**, **XLSX**, **YAML** (auto-detected from extension).
+
+| Method | Key Params | Returns |
+|--------|-----------|---------|
+| `read` | `file_path`, `format`, `encoding`, `sheet` | `{"status": True, "data": [...]}` |
+| `write` | `file_path`, `data`, `format`, `encoding`, `sheet` | `{"status": True}` |
+
+---
+
+### `common.Notify` — Notifications
+
+| Method | Key Params | Description |
+|--------|-----------|-------------|
+| `email` | `smtp_host`, `smtp_port`, `from_addr`, `to_addrs`, `subject`, `body`, `body_type`, `use_tls` | Send email via SMTP |
+| `webhook` | `url`, `body`, `method`, `headers`, `timeout` | Send webhook (Slack, Teams, DingTalk, etc.) |
+
+---
+
+### `common.Ssh` — Remote Execution & SFTP
+
+| Method | Key Params | Description |
+|--------|-----------|-------------|
+| `connect` | `host`, `port`, `username`, `password` / `key_file`, `timeout` | Establish SSH connection |
+| `disconnect` | — | Close SSH and SFTP sessions |
+| `run` | `cmd`, `timeout` | Execute remote shell command |
+| `run_script` | `script_path`, `interpreter`, `args`, `timeout` | Upload and run local script remotely |
+| `upload` | `local_path`, `remote_path` | Upload file via SFTP |
+| `download` | `remote_path`, `local_path` | Download file via SFTP |
+
+`run` and `run_script` return `{"status": True, "exit_code": N, "stdout": "...", "stderr": "..."}`.
+
+---
+
+### `common.MultiProcess` — Parallel Execution
+
+| Method | Key Params | Description |
+|--------|-----------|-------------|
+| `parallel_steps` | `steps` (list of step dicts), `processes` | Run independent workflow steps concurrently |
+| `parallel_data` | `data`, `data_key`, `mod`, `method`, `params`, `processes` | Split data into chunks and process in parallel |
+
+> **Note:** Worker processes cannot inherit stateful connections (SSH, MySQL, Elasticsearch). Best for stateless operations.
+
+---
+
+### `mongodb.MongoDB` — MongoDB Operations
+
+Connection is stored in context (`__mongodb_con__`, `__mongodb_db__`) to persist across steps.
+
+| Method | Key Params | Description |
+|--------|-----------|-------------|
+| `connect` | `host`, `port`, `username`, `password`, `database`, `auth_source`, TLS options | Establish connection with optional TLS/SSL |
+| `disconnect` | — | Close connection |
+| `find` | `collection`, `query`, `projection`, `sort`, `limit` | Query documents |
+| `findOne` | `collection`, `query`, `projection` | Get single document |
+| `insert` | `collection`, `data` | Insert documents |
+| `update` | `collection`, `query`, `data`, `upsert` | Update documents |
+| `delete` | `collection`, `query` | Delete documents |
+| `count` | `collection`, `query` | Count matching documents |
+| `aggregate` | `collection`, `pipeline` | Run aggregation pipeline |
+
+TLS supports cert from local file path, URL, or base64-encoded content.
+
+---
+
+### `kafkaclient.Kafka` — Kafka Producer/Consumer
+
+Producer and consumer are stored in context (`__kafka_producer__`, `__kafka_consumer__`).
+
+| Method | Key Params | Description |
+|--------|-----------|-------------|
+| `connect_producer` | `bootstrap_servers`, `client_id`, `acks`, `retries`, security options | Connect as Kafka producer |
+| `connect_consumer` | `bootstrap_servers`, `group_id`, `topics`, `auto_offset_reset`, security options | Connect and subscribe as consumer |
+| `send` | `topic`, `data`, `key` | Send JSON message to topic |
+| `consume` | `max_messages`, `timeout_ms` | Consume messages from subscribed topics |
+| `disconnect` | — | Close producer/consumer |
+| `list_topics` | — | List available topics |
+
+Supports PLAINTEXT, SSL, SASL_PLAINTEXT, and SASL_SSL security protocols.
+
+---
+
+### `mysqlcluster.MySQLCluster` — MySQL Cluster Failover
+
+Stores MySQLBase instance in context (`__mysqlcluster_mysql__`). Delegates operations to `mysql.MySQL`.
+
+| Method | Key Params | Description |
+|--------|-----------|-------------|
+| `connect` | `nodes` (list of {host, port, username, password, database}), `retry_on_error` | Connect to first available node |
+| `disconnect` | — | Close connection |
+| `query` | `sql`, `params` | Parameterized SELECT (delegated) |
+| `insert` | `table`, `data` | Insert records (delegated) |
+| `update` | `table`, `where`, `data` | Update records (delegated) |
+| `insertWithUK` | `table`, `data`, `update_cols`, `key_cols` | Upsert on duplicate key (delegated) |
+
+Returns `{"status": True, "connected_node": "host:port"}` on connect.
+
+---
+
+### `mongodbcluster.MongoDBCluster` — MongoDB Cluster Failover
+
+Delegates all operations to `mongodb.MongoDB`. Auto-failover to next node on connection error.
+
+| Method | Key Params | Description |
+|--------|-----------|-------------|
+| `connect` | `nodes` (list of {host, port, username, password, database, TLS options}), `retry_on_error` | Connect to first available node |
+| `disconnect` | — | Close connection |
+| `find` | `collection`, `query`, `projection`, `sort`, `limit` | Query documents (delegated) |
+| `insert` | `collection`, `data` | Insert documents (delegated) |
+| `update` | `collection`, `query`, `data`, `upsert` | Update documents (delegated) |
+| `delete` | `collection`, `query` | Delete documents (delegated) |
+| `count` | `collection`, `query` | Count documents (delegated) |
+| `aggregate` | `collection`, `pipeline` | Aggregation pipeline (delegated) |
+
+Returns `{"status": True, "connected_node": "host:port"}` on connect.
+
+---
+
+### `mysql.MySQL` — MySQL Operations
+
+| Method | Key Params | Description |
+|--------|-----------|-------------|
+| `connect` | `host`, `port`, `username`, `password`, `database`, `charset` | Establish connection |
+| `disconnect` | — | Close connection |
+| `query` | `sql`, `params` | Parameterized SELECT |
+| `insert` | `table`, `data` | Insert records |
+| `update` | `table`, `where`, `data` | Update records |
+| `upsert` | `table`, `data`, `update_cols`, `key_cols` | Insert or update on duplicate key |
+| `execute` | `sql` | Execute arbitrary SQL |
+| `showDatabases` | — | List databases |
+| `showTables` | — | List tables |
+
+---
+
+### `elasticsearchclient.ElasticSearch` — Elasticsearch
+
+| Method | Description |
+|--------|-------------|
+| `connect` | Connect with basic auth, API key, or certificate |
+| `disconnect` | Close connection |
+| `search` | Execute search query |
+| `get` | Get document by ID |
+| `index` | Index a document |
+| `create` | Create a document (fail if exists) |
+| `bulk` | Bulk index/update/delete |
+| `update` | Update document |
+| `delete` | Delete document |
+| `createIndex` | Create index with mapping |
+| `deleteIndex` | Delete index |
+| `health` | Get cluster health |
+
+---
+
+### `prometheus.Prometheus` — Metrics
+
+| Method | Description |
+|--------|-------------|
+| `connect` | Connect to Pushgateway |
+| `disconnect` | Close connection |
+| `dicts2prom` | Convert list of dicts to Prometheus metrics |
+| `push` | Push metrics to Pushgateway |
+| `write` | Write metrics to file (for node_exporter) |
+
+Supported metric types: `gauge`, `counter`, `histogram`, `summary`.
+
+---
+
+## Database Schema
+
+### Tables
+
+| Table | Purpose |
+|-------|---------|
+| `wf_flow` | Workflow definitions |
+| `wf_syslog` | Engine runtime logs |
+| `wf_run_history` | Workflow execution records |
+| `wf_run_step` | Per-step execution details |
+| `wf_version` | Version snapshots for workflows and modules |
+| `wf_audit_log` | User action audit trail |
+| `wf_role` | Custom roles |
+| `wf_user_role` | User ↔ Role mappings |
+| `system_setting` | Key-value system configuration |
+| `system_api_key` | API access tokens (hashed) |
+| `system_devtool_request` | Devtool request history |
+
+### Key Table Details
 
 #### `wf_flow`
 
-| Column     | Description                |
-| ---------- | -------------------------- |
-| id         | Primary key                |
-| flow_name  | Unique workflow name       |
-| flow_json  | Workflow definition (JSON) |
-| enabled    | Enable flag                |
-| deleted    | Soft delete flag           |
-| created_at | Creation time              |
-| updated_at | Update time                |
+| Column | Description |
+|--------|-------------|
+| `id` | Primary key |
+| `flow_name` | Unique workflow name |
+| `flow_procedures` | Workflow JSON definition |
+| `enabled` | Enable flag |
+| `deleted` | Soft delete flag |
+| `created_at` | Creation timestamp |
+| `updated_at` | Last update timestamp |
 
----
+#### `wf_run_history`
 
-#### `wf_syslog`
+| Column | Description |
+|--------|-------------|
+| `id` | Primary key (run ID) |
+| `flow_name` | Workflow name |
+| `status` | `running` / `success` / `failed` |
+| `trigger_by` | Username or `job:<name>` |
+| `start_time` | Execution start |
+| `end_time` | Execution end |
+| `duration_ms` | Total duration in ms |
+| `error_msg` | Error message if failed |
 
-| Column      | Description                  |
-| ----------- | ---------------------------- |
-| id          | Primary key                  |
-| created_at  | Log timestamp                |
-| level       | Log level                    |
-| logger_name | Logger name                  |
-| message     | Log message                  |
+#### `wf_run_step`
 
----
-
-#### `wf_role`
-
-| Column      | Description                  |
-| ----------- | ---------------------------- |
-| id          | Primary key                  |
-| name        | Unique role name             |
-| description | Role description             |
-| created_at  | Creation time                |
-
-Purpose:
-
-* Custom role definitions for workflow access control
-* Extends beyond Django's built-in Group model
-
----
+| Column | Description |
+|--------|-------------|
+| `id` | Primary key |
+| `run_id` | Foreign key to `wf_run_history` |
+| `step_name` | Procedure name |
+| `step_order` | Execution order |
+| `status` | `running` / `success` / `failed` |
+| `duration_ms` | Step duration in ms |
+| `result_data` | Step result JSON |
+| `error_msg` | Error message if failed |
 
 #### `wf_audit_log`
 
-| Column      | Description                  |
-| ----------- | ---------------------------- |
-| id          | Primary key                  |
-| user_id     | Foreign key to auth_user     |
-| action      | Action type (create, update, delete, enable, disable, run, login, logout) |
-| target_type | Target entity type (flow, user, group, role) |
-| target_name | Target entity name           |
-| detail      | Additional details (JSON)    |
-| ip_address  | Client IP address            |
-| created_at  | Log timestamp                |
-
-Purpose:
-
-* Track every user action across the web frontend
-* Support security auditing and compliance
-* Auto-captured by AuditMiddleware + explicit logging in views
+| Column | Description |
+|--------|-------------|
+| `id` | Primary key |
+| `user_id` | FK to `auth_user` |
+| `action` | Action type |
+| `target_type` | Entity type (flow, user, module, etc.) |
+| `target_name` | Entity name |
+| `detail` | JSON detail of the change |
+| `ip_address` | Client IP |
+| `created_at` | Timestamp |
 
 ---
 
-## 11. Execution Lifecycle
+## Security Considerations
 
-```
-Start Program
-    ↓
-Load Configuration
-    ↓
-Initialize Log Object
-    ↓
-Initialize Database Connection
-    ↓
-Attach MySQL Log Handler
-    ↓
-Load Flow Definition
-    ↓
-Execute Procedures Sequentially
-    ↓
-Write Logs
-    ↓
-End
-```
+WorkFlow is designed as an **internal tool** deployed behind a firewall. The following items should be reviewed before production deployment:
+
+| Area | Default | Recommendation |
+|------|---------|----------------|
+| **Flask REST API auth** | No authentication on most endpoints | Deploy behind a reverse proxy with auth, or add API key validation |
+| **Django ALLOWED_HOSTS** | `['*']` | Restrict to specific hostnames in production |
+| **Debug mode** | `true` in `global.json` | Set `api.debug` and `web.debug` to `false` |
+| **API bind address** | `0.0.0.0` | Use `127.0.0.1` if the API should not be exposed externally |
+| **DB password** | `"pass"` (development default) | Change to a strong password |
+| **Django SECRET_KEY** | `"change-me-in-production"` | Generate a random 50+ character key |
+| **Error messages** | `str(e)` returned to API clients | Acceptable for internal use; sanitize for public-facing deployments |
+| **API keys** | Hashed with bcrypt; plain key shown once at creation | Rotate keys regularly |
+| **SQL queries** | All parameterized (no string concatenation) | Safe by design |
+| **CSRF protection** | Enabled via Django middleware | Active on all form submissions |
+| **SSL verification** | `verify_ssl=True` by default in Http module | Do not disable in production |
 
 ---
 
-## 12. Error Handling
+## Testing
 
-* Parameter resolution errors:
+All features have been tested across **303 test cases** covering authentication, workflows, modules, run logs, system admin, REST API, and browser UI.
 
-  * Logged
-  * Workflow stops immediately
-* Procedure execution errors:
+| Metric | Count |
+|--------|-------|
+| **Total** | 303 |
+| **Pass** | 297 |
+| **Fail** | 0 |
+| **Skip** | 6 |
 
-  * Logged
-  * Exception propagated
-* Logging errors never interrupt workflow execution
+Test methods include:
+- **Browser tests** — end-to-end UI testing across all pages (login, dashboard, workflows, modules, accounts, system admin)
+- **API tests** — REST endpoint validation for CRUD operations, workflow execution, and system configuration
+- **Integration tests** — cross-module workflows, database operations, service management
 
----
-
-## 13. Design Principles
-
-* Explicit over implicit
-* Configuration-driven execution
-* Clear separation of system and business logic
-* Deterministic execution order
-* Observability as a first-class concern
+The full test report with detailed steps, expected results, and screenshots is available at [`test/test.md`](test/test.md).
 
 ---
 
-## 14. Available Modules
+## Design Principles
 
-| Module | Path | Description |
-| ------ | ---- | ----------- |
-| Kt | `mod/common/Kt.py` | Example procedure module for testing and reference |
-| DataTransformer | `mod/common/DataTransformer.py` | Dict list ↔ pandas DataFrame conversion |
-| Filter | `mod/common/Filter.py` | Dict list filtering, sorting, dedup, select, limit |
-| Http | `mod/common/Http.py` | HTTP client (GET/POST/PUT/DELETE) with auth support |
-| FileIO | `mod/common/FileIO.py` | File read/write (CSV, JSON, Excel, YAML) |
-| Notify | `mod/common/Notify.py` | Email (SMTP) + Webhook notifications |
-| Ssh | `mod/common/Ssh.py` | SSH remote commands, scripts, SFTP file transfer |
-| MultiProcess | `mod/common/MultiProcess.py` | Parallel steps + parallel data chunk processing |
-| MySQL | `mod/mysql/MySQL.py` | MySQL database CRUD operations |
-| ElasticSearch | `mod/elasticsearch/ElasticSearch.py` | Elasticsearch 8.x CRUD + Search operations |
-| Prometheus | `mod/prometheus/Prometheus.py` | Prometheus metrics conversion, push and export |
-
-Each module has its own `README.md` with usage instructions and workflow JSON samples. See the respective `mod/<module>/README.md` for details.
+1. **Explicit over implicit** — all procedure dependencies declared in JSON; no hidden coupling
+2. **Configuration-driven** — workflows stored as JSON in the database, loaded dynamically
+3. **Clear separation** — system infrastructure (`lib/`) vs business logic (`mod/`)
+4. **Deterministic execution** — sequential procedure execution with predictable ordering
+5. **Observability first** — logging at every layer (console, file, database); run history with step-level detail
+6. **Fail-safe logging** — logging errors never interrupt workflow execution
+7. **Security by default** — SSL verification on, parameterized queries only, audit trail on all actions
+8. **Soft deletes** — workflows renamed with timestamp suffix rather than hard deleted
+9. **Version everything** — every workflow and module edit creates a restorable snapshot
+10. **Extend without modifying** — add new modules under `mod/` without touching the engine
 
 ---
 
-## 15. REST API
+## Changelog
 
-WorkFlow exposes a Flask REST API for managing and executing workflows as a web service.
+### v0.0.2 (2026-02-22)
 
-### Endpoints
+**New Features**
+- **Triple-mode workflow editor** — Visual (drag-and-drop canvas), Form, and JSON editing modes with bidirectional sync
+- **Module editor** — write and edit Python procedure modules directly in the browser with syntax highlighting
+- **Version control** — every workflow and module edit is versioned with diff and restore support
+- **Cluster failover modules** — MySQLCluster and MongoDBCluster with automatic node failover
+- **Kafka module** — producer/consumer operations with SASL/SSL support (`kafkaclient.Kafka`)
+- **MongoDB module** — full CRUD, aggregation, TLS support (`mongodb.MongoDB`)
+- **Bash module** — execute shell commands with timeout and environment variable support
+- **SSL management** — upload and manage server certificates and trusted CA certificates from the UI
+- **Services management** — view, configure, and restart backend/frontend services from the UI
+- **Backup & restore** — export/import workflows, modules, accounts, and settings as ZIP
+- **API key management** — create, rotate, and revoke API keys with bcrypt hashing
+- **Developer tools** — built-in REST client and SQL query tool in the web UI
+- **Audit log** — every user action captured with IP, timestamp, and change detail
+- **Role-based access control** — granular page + action permissions via Groups and Roles
 
-| Method | Endpoint | Description |
-| ------ | -------- | ----------- |
-| `GET` | `/flow` | List all workflows |
-| `GET` | `/flow/<name>` | Get workflow info |
-| `POST` | `/flow` | Create workflow |
-| `PUT` | `/flow/<name>` | Update workflow |
-| `DELETE` | `/flow/<name>` | Delete workflow (soft) |
-| `POST` | `/flow/<name>/run` | Execute workflow |
-| `PUT` | `/flow/<name>/enable` | Enable workflow |
-| `PUT` | `/flow/<name>/disable` | Disable workflow |
-| `PUT` | `/flow/<name>/rename` | Rename workflow |
+**Improvements**
+- Expanded to **16 built-in modules** (Bash, HTTP, SSH, FileIO, MySQL, MongoDB, Kafka, Elasticsearch, Prometheus, Notify, Filter, DataTransformer, Kt, MultiProcess, MySQLCluster, MongoDBCluster)
+- Service management via unified `bin/service.sh` (start/stop/restart/status for backend and frontend)
+- Port configuration auto-sync between `global.json` and `service.conf` via the web UI
+- Password verification modal for sensitive system operations
+- Comprehensive test suite: **303 test cases** (297 pass, 0 fail, 6 skip)
 
-### Running the Service
+**Security**
+- Passwords masked in debug logs
+- Security comments added to default configuration
+- Expanded `.gitignore` for credential and secret file protection
 
-**Production (gunicorn):**
+### v0.0.1 (2025-08-22)
 
-```bash
-./bin/service.sh
-```
-
-Settings are loaded from `etc/service.conf`:
-
-| Setting | Default | Description |
-| ------- | ------- | ----------- |
-| `HOST` | `0.0.0.0` | Bind address |
-| `PORT` | `5000` | Listen port |
-| `WORKERS` | `4` | Gunicorn worker processes |
-| `PROCESSES` | `4` | Threads per worker |
-| `TIMEOUT` | `120` | Worker request timeout (seconds) |
-| `LOG_LEVEL` | `info` | Gunicorn log level |
-| `ACCESS_LOG` | `-` | Access log path (`-` for stdout) |
-| `ERROR_LOG` | `-` | Error log path (`-` for stderr) |
-
-**Development (Flask built-in server):**
-
-```bash
-python3 bin/WorkFlow.py --serve
-```
+- Initial release
+- JSON-defined workflow engine with dynamic module loading
+- Flask REST API (port 5001) and Django web frontend (port 5002)
+- Core modules: HTTP, SSH, FileIO, MySQL, Elasticsearch, Prometheus, Notify, Filter, DataTransformer, Kt, MultiProcess
+- CLI interface for workflow management and execution
+- MySQL-backed logging and run history
 
 ---
 
-## 16. Web Frontend
+## License
 
-A Django-based web frontend provides a browser interface for managing workflows, users, and system logs.
-
-### Architecture
-
-* **Framework:** Django 4.2 + Bootstrap 5 (CDN) + CodeMirror 5 (CDN)
-* **Database:** Shares the same MySQL database via `etc/global.json` (uses `pymysql.install_as_MySQLdb()`)
-* **Integration:** Direct DB reads for listing data, Flask REST API calls for mutations
-* **Port:** 8000 (default), configurable in `etc/global.json` `web` section
-
-### Django Apps
-
-| App | Description |
-| --- | ----------- |
-| `dashboard` | Home page with summary cards (workflow counts, user stats, recent audit activity) |
-| `accounts` | User, Group, and Role CRUD + login/logout |
-| `audit` | Auto-capture audit middleware + filterable audit log page |
-| `syslog_viewer` | Workflow syslog viewer with level/date/search filters |
-| `workflows` | Workflow list, actions (enable/disable/delete/rename/run), dual-mode editor |
-
-### Workflow Editor
-
-The workflow editor (`/workflows/<name>/edit/`) provides two editing modes:
-
-* **Form mode** — dynamic form with add/remove procedure steps, each with name/mod/method/params fields
-* **JSON mode** — CodeMirror editor with syntax highlighting, bracket matching, and validation
-
-Switching between tabs automatically syncs data bidirectionally.
-
-### URL Structure
-
-| URL Pattern | Description |
-| ----------- | ----------- |
-| `/` | Dashboard |
-| `/accounts/login/` | Login |
-| `/accounts/logout/` | Logout |
-| `/accounts/users/` | User list (create/edit/enable/disable) |
-| `/accounts/groups/` | Group list (create/edit/delete) |
-| `/accounts/roles/` | Role list (create/edit/delete) |
-| `/audit/` | Audit log (filter by user/action/target/date) |
-| `/syslog/` | Syslog viewer (filter by level/date/search) |
-| `/workflows/` | Workflow list (edit/enable/disable/delete/rename/run) |
-| `/workflows/create/` | Create new workflow |
-| `/workflows/<name>/edit/` | Edit workflow (form + JSON editor) |
-
-### Running the Web Frontend
-
-**Setup:**
-
-```bash
-pip install Django
-cd web && python manage.py migrate
-python manage.py createsuperuser
-```
-
-**Development:**
-
-```bash
-./web/service_django.sh
-```
-
-Or manually:
-
-```bash
-cd web && python manage.py runserver 0.0.0.0:8000
-```
-
-**Note:** The Flask REST API backend must be running on port 5000 for workflow mutations to work.
-
-### Configuration
-
-Web frontend settings are in `etc/global.json`:
-
-```json5
-web: {
-    secret_key: "change-me-in-production",
-    debug: true,
-    port: 8000,
-},
-```
-
----
-
-## 17. Summary
-
-This framework provides:
-
-* Clear and explicit workflow orchestration
-* Structured data flow between procedures
-* Centralized logging and persistence
-* Predictable execution behavior
-* A solid foundation for future extensions
-
-The design goal is:
-
-**Clarity first · Correctness always · Complexity last**
+MIT License. See [LICENSE](LICENSE) for details.

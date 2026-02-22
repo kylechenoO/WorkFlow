@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Versions — {{ flow.flow_name }} - WorkFlow{% endblock %}
+{% block page_title %}Versions — {{ flow.flow_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.diff-check { width: 18px; height: 18px; }
+</style>
+{% endblock %}
+
+{% block top_actions %}
+<a href="{% url 'workflows:flow_edit' flow.flow_name %}" class="btn btn-sm btn-outline-primary">
+  <i class="bi bi-pencil"></i> Edit
+</a>
+<a href="{% url 'workflows:flow_list' %}" class="btn btn-sm btn-outline-secondary ms-1">
+  <i class="bi bi-arrow-left"></i> Back
+</a>
+{% endblock %}
+
+{% block content %}
+<!-- Diff selector -->
+<form method="get" action="{% url 'workflows:flow_version_diff' flow.flow_name %}" id="diff-form" class="mb-2">
+  <button type="submit" class="btn btn-sm btn-outline-info" id="btn-diff" disabled>
+    <i class="bi bi-arrows-expand"></i> Compare Selected
+  </button>
+</form>
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0 sortable">
+      <thead>
+        <tr>
+          <th style="width:5%">Diff</th>
+          <th style="width:10%" data-sort="number">Version</th>
+          <th style="width:25%" data-sort="date">Date</th>
+          <th style="width:20%" data-sort="string">Changed By</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in versions %}
+        <tr>
+          <td><input type="checkbox" class="diff-check" value="{{ v.id }}" data-version="{{ v.version }}"></td>
+          <td><strong>v{{ v.version }}</strong></td>
+          <td><small>{{ v.created_at|date:"Y-m-d H:i:s" }}</small></td>
+          <td>{{ v.changed_by|default:"—" }}</td>
+          <td>
+            <a href="{% url 'workflows:flow_version_detail' flow.flow_name v.id %}" class="btn btn-sm btn-outline-primary btn-action">
+              <i class="bi bi-eye"></i> View
+            </a>
+            {% if perms_map.workflows.edit %}
+            <form method="post" action="{% url 'workflows:flow_version_restore' flow.flow_name v.id %}" class="d-inline"
+                  data-confirm-title="Restore Version"
+                  data-confirm-message="Restore workflow to version <strong>v{{ v.version }}</strong>? Current state will be saved as a new version first.">
+              {% csrf_token %}
+              <button type="button" class="btn btn-sm btn-outline-warning btn-action confirm-trigger">
+                <i class="bi bi-arrow-counterclockwise"></i> Restore
+              </button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" class="text-center text-muted py-5">
+            <i class="bi bi-clock-history" style="font-size:48px;"></i>
+            <p class="mt-2">No version history found for this workflow.</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/sortable_table.js' %}"></script>
+<script>
+(function() {
+  var checks = document.querySelectorAll('.diff-check');
+  var btnDiff = document.getElementById('btn-diff');
+  var form = document.getElementById('diff-form');
+
+  function updateBtn() {
+    var sel = document.querySelectorAll('.diff-check:checked');
+    btnDiff.disabled = (sel.length !== 2);
+  }
+
+  checks.forEach(function(cb) {
+    cb.addEventListener('change', function() {
+      var sel = document.querySelectorAll('.diff-check:checked');
+      if (sel.length > 2) {
+        // uncheck the first one that is not this
+        for (var i = 0; i < checks.length; i++) {
+          if (checks[i] !== cb && checks[i].checked) {
+            checks[i].checked = false;
+            break;
+          }
+        }
+      }
+      updateBtn();
+    });
+  });
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var sel = document.querySelectorAll('.diff-check:checked');
+    if (sel.length !== 2) { return; }
+    var ids = [];
+    var vers = [];
+    sel.forEach(function(c) { ids.push(c.value); vers.push(parseInt(c.dataset.version)); });
+    // ensure v1 is the older version
+    if (vers[0] > vers[1]) { ids.reverse(); }
+    var baseUrl = form.action.split('?')[0];
+    window.location.href = baseUrl + '?v1=' + ids[0] + '&v2=' + ids[1];
+  });
+})();
+</script>
+{% endblock %}

@@ -14,7 +14,7 @@ workflow definitions stored in a backend database. It is responsible for:
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import build in pkgs
@@ -23,11 +23,14 @@ import os
 import sys
 import json
 import json5
+import time
+import signal
 import argparse
-from datetime import datetime
+import subprocess
+from datetime import datetime, timezone
 
 ## import flask
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 
 
 ## Resolve project root directory
@@ -83,7 +86,7 @@ class WorkFlow(object):
         self.logger.debug({'db.host': self.config['db']['host']})
         self.logger.debug({'db.port': self.config['db']['port']})
         self.logger.debug({'db.username': self.config['db']['username']})
-        self.logger.debug({'db.password': self.config['db']['password']})
+        self.logger.debug({'db.password': '********'})
         self.logger.debug({'db.database': self.config['db']['database']})
         self.logger.debug({'db.charset': self.config['db']['charset']})
 
@@ -227,23 +230,124 @@ class WorkFlow(object):
         self.logger.info({'status': 'end'})
         return(True)
 
-    def run(self, flow_name) -> dict:
+    def _sanitize_context(self, context):
+        """Remove non-serializable internal keys from context for API responses."""
+        sanitized = {}
+        for k, v in context.items():
+            if k.startswith('__') and k.endswith('__'):
+                continue
+            try:
+                json.dumps(v)
+                sanitized[k] = v
+            except (TypeError, ValueError):
+                sanitized[k] = str(v)
+        return sanitized
+
+    def run(self, flow_name, trigger_by=None) -> dict:
         """
-        Execute a workflow by name.
+        Execute a workflow by name and record run history.
 
         Args:
             flow_name (str): Name of the workflow to execute
+            trigger_by (str): Optional — who triggered the run (username or 'api')
 
         Returns:
-            dict: Execution result with status and context
+            dict: Execution result with status, run_id, and context
         """
+
+        run_id = None
+        run_start = time.time()
+
+        try:
+            ## insert run history row (status=running)
+            self.MySQLObj._ensure_connection()
+            now_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.') + '%03d' % (datetime.now(timezone.utc).microsecond // 1000)
+            insert_sql = (
+                "INSERT INTO wf_run_history (flow_name, status, trigger_by, start_time) "
+                "VALUES (%s, %s, %s, %s)"
+            )
+            self.MySQLObj.cur.execute(insert_sql, (flow_name, 'running', trigger_by, now_str))
+            self.MySQLObj.con.commit()
+            run_id = self.MySQLObj.cur.lastrowid
+            self.logger.info({'status': 'Run history created', 'run_id': run_id, 'flow_name': flow_name})
+
+        ## error handling
+        except Exception as e:
+            self.logger.error({'status': 'Error creating run history: %s' % (e)})
 
         ## exec specify flow
         context = {}
-        result = self.FlowObj.execFlow(flow_name, context)
+        flow_error = None
+        try:
+            result = self.FlowObj.execFlow(flow_name, context)
+
+        ## error handling
+        except Exception as e:
+            self.logger.error({'status': 'Error executing flow %s: %s' % (flow_name, e)})
+            flow_error = str(e)
+
+        ## determine final status
+        run_end = time.time()
+        duration_ms = int((run_end - run_start) * 1000)
+        final_status = 'success'
+
+        if flow_error:
+            final_status = 'failed'
+        else:
+            ## check if any step failed
+            steps = context.get('__steps__', [])
+            for step in steps:
+                if step.get('status') == 'failed':
+                    final_status = 'failed'
+                    if not flow_error:
+                        flow_error = step.get('error')
+                    break
+
+        ## update run history with final status
+        if run_id:
+            try:
+                self.MySQLObj._ensure_connection()
+                end_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.') + '%03d' % (datetime.now(timezone.utc).microsecond // 1000)
+                update_sql = (
+                    "UPDATE wf_run_history SET status=%s, end_time=%s, duration_ms=%s, error_msg=%s "
+                    "WHERE id=%s"
+                )
+                self.MySQLObj.cur.execute(update_sql, (final_status, end_str, duration_ms, flow_error, run_id))
+                self.MySQLObj.con.commit()
+
+                ## insert step records
+                steps = context.get('__steps__', [])
+                for step in steps:
+                    step_sql = (
+                        "INSERT INTO wf_run_step (run_id, step_name, step_order, status, start_time, end_time, duration_ms, result_data, error_msg) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                    )
+                    try:
+                        result_json = json.dumps(step.get('result')) if step.get('result') else None
+                    except (TypeError, ValueError):
+                        result_json = str(step.get('result'))
+                    self.MySQLObj.cur.execute(step_sql, (
+                        run_id,
+                        step.get('name', ''),
+                        step.get('order', 0),
+                        step.get('status', 'pending'),
+                        step.get('start_time'),
+                        step.get('end_time'),
+                        step.get('duration_ms'),
+                        result_json,
+                        step.get('error')
+                    ))
+                self.MySQLObj.con.commit()
+                self.logger.info({'status': 'Run history updated', 'run_id': run_id, 'final_status': final_status, 'steps': len(steps)})
+
+            ## error handling
+            except Exception as e:
+                self.logger.error({'status': 'Error updating run history: %s' % (e)})
+
         return {
-            'status': True,
-            'data': context
+            'status': final_status == 'success',
+            'run_id': run_id,
+            'data': self._sanitize_context(context)
         }
 
     def create_flow(self, flowConf) -> dict:
@@ -263,6 +367,12 @@ class WorkFlow(object):
         ## gen a flow
         flow_name = flowConf['name']
         flow_procedures = {'procedures': flowConf['procedures']}
+        if 'variables' in flowConf:
+            flow_procedures['variables'] = flowConf['variables']
+        if '_connections' in flowConf:
+            flow_procedures['_connections'] = flowConf['_connections']
+        if '_positions' in flowConf:
+            flow_procedures['_positions'] = flowConf['_positions']
         flow = self.FlowObj.genFlow(flow_name, flow_procedures)
         self.logger.info({'flow': flow})
 
@@ -370,6 +480,12 @@ class WorkFlow(object):
         ## gen a flow
         flow_name = flowConf['name']
         flow_procedures = {'procedures': flowConf['procedures']}
+        if 'variables' in flowConf:
+            flow_procedures['variables'] = flowConf['variables']
+        if '_connections' in flowConf:
+            flow_procedures['_connections'] = flowConf['_connections']
+        if '_positions' in flowConf:
+            flow_procedures['_positions'] = flowConf['_positions']
         flow = self.FlowObj.genFlow(flow_name, flow_procedures)
         self.logger.info({'flow': flow})
 
@@ -485,10 +601,77 @@ class WorkFlow(object):
         @app.route('/flow/<name>/run', methods=['POST'])
         def api_run_flow(name):
             try:
-                result = wf.run(name)
+                body = request.get_json(silent=True) or {}
+                trigger_by = body.get('trigger_by', 'api')
+                result = wf.run(name, trigger_by=trigger_by)
                 return jsonify(result)
             except Exception as e:
                 wf.logger.error({'status': 'Error in API run_flow: %s' % (e)})
+                return jsonify({'status': False, 'error': str(e)}), 500
+
+        ## GET /flow/<name>/runs - list run history for a workflow
+        @app.route('/flow/<name>/runs', methods=['GET'])
+        def api_get_run_history(name):
+            try:
+                limit = request.args.get('limit', 20, type=int)
+                wf.MySQLObj._ensure_connection()
+                sql = "SELECT id, flow_name, status, trigger_by, start_time, end_time, duration_ms, error_msg FROM wf_run_history WHERE flow_name=%s ORDER BY start_time DESC LIMIT %s"
+                wf.MySQLObj.cur.execute(sql, (name, limit))
+                rows = wf.MySQLObj.cur.fetchall()
+                columns = [desc[0] for desc in wf.MySQLObj.cur.description] if wf.MySQLObj.cur.description else []
+                runs = []
+                for row in rows:
+                    run_dict = dict(zip(columns, row))
+                    ## convert datetime to string for JSON
+                    for k in ('start_time', 'end_time'):
+                        if run_dict.get(k):
+                            run_dict[k] = str(run_dict[k])
+                    runs.append(run_dict)
+                return jsonify({'status': True, 'data': runs})
+            except Exception as e:
+                wf.logger.error({'status': 'Error in API get_run_history: %s' % (e)})
+                return jsonify({'status': False, 'error': str(e)}), 500
+
+        ## GET /run/<run_id> - get single run detail with steps
+        @app.route('/run/<int:run_id>', methods=['GET'])
+        def api_get_run_detail(run_id):
+            try:
+                wf.MySQLObj._ensure_connection()
+                ## get run header
+                run_sql = "SELECT id, flow_name, status, trigger_by, start_time, end_time, duration_ms, error_msg FROM wf_run_history WHERE id=%s"
+                wf.MySQLObj.cur.execute(run_sql, (run_id,))
+                run_row = wf.MySQLObj.cur.fetchone()
+                if not run_row:
+                    return jsonify({'status': False, 'error': 'Run not found'}), 404
+                run_cols = [desc[0] for desc in wf.MySQLObj.cur.description]
+                run_dict = dict(zip(run_cols, run_row))
+                for k in ('start_time', 'end_time'):
+                    if run_dict.get(k):
+                        run_dict[k] = str(run_dict[k])
+
+                ## get steps
+                step_sql = "SELECT id, run_id, step_name, step_order, status, start_time, end_time, duration_ms, result_data, error_msg FROM wf_run_step WHERE run_id=%s ORDER BY step_order"
+                wf.MySQLObj.cur.execute(step_sql, (run_id,))
+                step_rows = wf.MySQLObj.cur.fetchall()
+                step_cols = [desc[0] for desc in wf.MySQLObj.cur.description] if wf.MySQLObj.cur.description else []
+                steps = []
+                for srow in step_rows:
+                    step_dict = dict(zip(step_cols, srow))
+                    for k in ('start_time', 'end_time'):
+                        if step_dict.get(k):
+                            step_dict[k] = str(step_dict[k])
+                    ## parse result_data JSON
+                    if step_dict.get('result_data') and isinstance(step_dict['result_data'], str):
+                        try:
+                            step_dict['result_data'] = json.loads(step_dict['result_data'])
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    steps.append(step_dict)
+
+                run_dict['steps'] = steps
+                return jsonify({'status': True, 'data': run_dict})
+            except Exception as e:
+                wf.logger.error({'status': 'Error in API get_run_detail: %s' % (e)})
                 return jsonify({'status': False, 'error': str(e)}), 500
 
         ## PUT /flow/<name>/enable - enable workflow
@@ -525,9 +708,389 @@ class WorkFlow(object):
                 wf.logger.error({'status': 'Error in API rename_flow: %s' % (e)})
                 return jsonify({'status': False, 'error': str(e)}), 500
 
+        ## GET /backup - download full backup ZIP
+        @app.route('/backup', methods=['GET'])
+        def api_backup():
+            import hashlib
+            import io as _io
+            import zipfile as _zipfile
+            from datetime import datetime as _dt
+
+            ## authenticate via X-Api-Key header
+            plain_key = request.headers.get('X-Api-Key', '')
+            if not plain_key:
+                return jsonify({'status': False, 'error': 'Authentication required'}), 401
+
+            try:
+                key_hash = hashlib.sha256(plain_key.encode()).hexdigest()
+                wf.MySQLObj._ensure_connection()
+                wf.MySQLObj.cur.execute(
+                    "SELECT id, enabled FROM system_api_key WHERE key_hash=%s LIMIT 1",
+                    (key_hash,)
+                )
+                row = wf.MySQLObj.cur.fetchone()
+                if not row or not row[1]:
+                    return jsonify({'status': False, 'error': 'Invalid or disabled API key'}), 401
+                ## update last_used
+                wf.MySQLObj.cur.execute(
+                    "UPDATE system_api_key SET last_used=NOW() WHERE id=%s",
+                    (row[0],)
+                )
+                wf.MySQLObj.con.commit()
+            except Exception as e:
+                wf.logger.error({'status': 'Error in API backup auth: %s' % (e)})
+                return jsonify({'status': False, 'error': 'Authentication error'}), 500
+
+            ## build backup ZIP
+            try:
+                buf = _io.BytesIO()
+                with _zipfile.ZipFile(buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
+                    meta = {
+                        'created_at': _dt.utcnow().isoformat() + 'Z',
+                        'created_by': 'api',
+                        'sections': [],
+                    }
+
+                    ## workflows
+                    wf.MySQLObj._ensure_connection()
+                    wf.MySQLObj.cur.execute(
+                        "SELECT flow_name, enabled, flow_procedures FROM wf_flow WHERE deleted=0"
+                    )
+                    flows = wf.MySQLObj.cur.fetchall()
+                    for row in flows:
+                        flow_name, enabled, procedures_str = row
+                        try:
+                            procedures = json.loads(procedures_str) if procedures_str else {}
+                        except Exception:
+                            procedures = {}
+                        data = {'flow_name': flow_name, 'enabled': bool(enabled), 'procedures': procedures}
+                        zf.writestr('workflows/%s.json' % flow_name, json.dumps(data, ensure_ascii=False, indent=2))
+                    meta['sections'].append('workflows')
+
+                    ## modules
+                    mod_root = os.path.join(workpath, 'mod')
+                    if os.path.isdir(mod_root):
+                        for category in sorted(os.listdir(mod_root)):
+                            cat_dir = os.path.join(mod_root, category)
+                            if not os.path.isdir(cat_dir):
+                                continue
+                            for fname in sorted(os.listdir(cat_dir)):
+                                if not fname.endswith('.py'):
+                                    continue
+                                fpath = os.path.join(cat_dir, fname)
+                                if os.path.commonpath([os.path.realpath(fpath), os.path.realpath(mod_root)]) != os.path.realpath(mod_root):
+                                    continue
+                                with open(fpath, 'r', encoding='utf-8') as mf:
+                                    zf.writestr('modules/%s/%s' % (category, fname), mf.read())
+                    meta['sections'].append('modules')
+
+                    ## settings
+                    wf.MySQLObj.cur.execute("SELECT `key`, `value` FROM system_setting")
+                    settings_rows = wf.MySQLObj.cur.fetchall()
+                    settings_data = {r[0]: r[1] for r in settings_rows} if settings_rows else {}
+                    zf.writestr('settings.json', json.dumps(settings_data, ensure_ascii=False, indent=2))
+                    meta['sections'].append('settings')
+
+                    ## write metadata
+                    zf.writestr('backup.json', json.dumps(meta, ensure_ascii=False, indent=2))
+
+                buf.seek(0)
+                filename = 'workflow_backup_%s.zip' % _dt.utcnow().strftime('%Y%m%d_%H%M%S')
+                return send_file(buf, mimetype='application/zip',
+                                 as_attachment=True, download_name=filename)
+
+            except Exception as e:
+                wf.logger.error({'status': 'Error in API backup: %s' % (e)})
+                return jsonify({'status': False, 'error': str(e)}), 500
+
+        ## POST /restore - restore from uploaded backup ZIP
+        @app.route('/restore', methods=['POST'])
+        def api_restore():
+            import hashlib
+            import io as _io
+            import zipfile as _zipfile
+
+            ## authenticate via X-Api-Key header
+            plain_key = request.headers.get('X-Api-Key', '')
+            if not plain_key:
+                return jsonify({'status': False, 'error': 'Authentication required'}), 401
+
+            try:
+                key_hash = hashlib.sha256(plain_key.encode()).hexdigest()
+                wf.MySQLObj._ensure_connection()
+                wf.MySQLObj.cur.execute(
+                    "SELECT id, enabled FROM system_api_key WHERE key_hash=%s LIMIT 1",
+                    (key_hash,)
+                )
+                row = wf.MySQLObj.cur.fetchone()
+                if not row or not row[1]:
+                    return jsonify({'status': False, 'error': 'Invalid or disabled API key'}), 401
+                ## update last_used
+                wf.MySQLObj.cur.execute(
+                    "UPDATE system_api_key SET last_used=NOW() WHERE id=%s",
+                    (row[0],)
+                )
+                wf.MySQLObj.con.commit()
+            except Exception as e:
+                wf.logger.error({'status': 'Error in API restore auth: %s' % (e)})
+                return jsonify({'status': False, 'error': 'Authentication error'}), 500
+
+            ## restore from uploaded ZIP
+            try:
+                uploaded = request.files.get('file')
+                if not uploaded:
+                    return jsonify({'status': False, 'error': 'No file uploaded. Use multipart/form-data with field name "file".'}), 400
+
+                restored = []
+                errors   = []
+
+                with _zipfile.ZipFile(_io.BytesIO(uploaded.read())) as zf:
+                    ## read metadata
+                    try:
+                        meta = json.loads(zf.read('backup.json'))
+                        sections = meta.get('sections', [])
+                    except Exception:
+                        return jsonify({'status': False, 'error': 'Invalid backup file: missing backup.json'}), 400
+
+                    ## restore workflows
+                    if 'workflows' in sections:
+                        try:
+                            count = 0
+                            for name in zf.namelist():
+                                if not name.startswith('workflows/') or not name.endswith('.json'):
+                                    continue
+                                data = json.loads(zf.read(name))
+                                flow_name = data.get('flow_name', '')
+                                if not flow_name:
+                                    continue
+                                procedures = data.get('procedures', {})
+                                procedures_str = json.dumps(procedures, ensure_ascii=False)
+
+                                ## check if workflow exists
+                                wf.MySQLObj._ensure_connection()
+                                wf.MySQLObj.cur.execute(
+                                    "SELECT id FROM wf_flow WHERE flow_name=%s AND deleted=0 LIMIT 1",
+                                    (flow_name,)
+                                )
+                                existing = wf.MySQLObj.cur.fetchone()
+
+                                if existing:
+                                    wf.MySQLObj.cur.execute(
+                                        "UPDATE wf_flow SET flow_procedures=%s, updated_at=NOW() WHERE id=%s",
+                                        (procedures_str, existing[0])
+                                    )
+                                else:
+                                    enabled = 1 if data.get('enabled', True) else 0
+                                    wf.MySQLObj.cur.execute(
+                                        "INSERT INTO wf_flow (flow_name, enabled, flow_procedures, deleted, created_at, updated_at) VALUES (%s, %s, %s, 0, NOW(), NOW())",
+                                        (flow_name, enabled, procedures_str)
+                                    )
+                                wf.MySQLObj.con.commit()
+                                count += 1
+                            restored.append('workflows (%d)' % count)
+                        except Exception as e:
+                            errors.append('workflows: %s' % str(e))
+
+                    ## restore modules
+                    if 'modules' in sections:
+                        try:
+                            mod_root = os.path.join(workpath, 'mod')
+                            count = 0
+                            for name in zf.namelist():
+                                if not name.startswith('modules/') or not name.endswith('.py'):
+                                    continue
+                                parts = name.split('/', 2)
+                                if len(parts) != 3:
+                                    continue
+                                category, fname = parts[1], parts[2]
+
+                                ## path safety
+                                target = os.path.realpath(os.path.join(mod_root, category, fname))
+                                if os.path.commonpath([target, os.path.realpath(mod_root)]) != os.path.realpath(mod_root):
+                                    continue
+
+                                os.makedirs(os.path.join(mod_root, category), exist_ok=True)
+                                with open(target, 'w', encoding='utf-8') as mf:
+                                    mf.write(zf.read(name).decode('utf-8'))
+                                count += 1
+                            restored.append('modules (%d files)' % count)
+                        except Exception as e:
+                            errors.append('modules: %s' % str(e))
+
+                    ## restore settings
+                    if 'settings' in sections:
+                        try:
+                            settings_data = json.loads(zf.read('settings.json'))
+                            wf.MySQLObj._ensure_connection()
+                            for key, value in settings_data.items():
+                                wf.MySQLObj.cur.execute(
+                                    "INSERT INTO system_setting (`key`, `value`) VALUES (%s, %s) ON DUPLICATE KEY UPDATE `value`=%s",
+                                    (key, value, value)
+                                )
+                            wf.MySQLObj.con.commit()
+                            restored.append('settings')
+                        except Exception as e:
+                            errors.append('settings: %s' % str(e))
+
+                result = {'status': True, 'restored': restored}
+                if errors:
+                    result['errors'] = errors
+                return jsonify(result), 200
+
+            except _zipfile.BadZipFile:
+                return jsonify({'status': False, 'error': 'Uploaded file is not a valid ZIP archive'}), 400
+            except Exception as e:
+                wf.logger.error({'status': 'Error in API restore: %s' % (e)})
+                return jsonify({'status': False, 'error': str(e)}), 500
+
+        ## =============================================================
+        ## Service Control Endpoints
+        ## =============================================================
+
+        _SVC_DEFS = {
+            'backend':  {'port': 5001, 'label': 'Backend (Flask API)'},
+            'frontend': {'port': 5002, 'label': 'Frontend (Django UI)'},
+        }
+
+        def _api_get_pid(port):
+            """Return the PID listening on the given port, or None."""
+            try:
+                result = subprocess.run(
+                    ['lsof', '-ti', 'tcp:%d' % port],
+                    capture_output=True, text=True, timeout=5
+                )
+                pids = result.stdout.strip().split('\n')
+                pids = [p for p in pids if p.strip().isdigit()]
+                return int(pids[0]) if pids else None
+            except Exception:
+                return None
+
+        def _api_stop_svc(port):
+            """Stop the process listening on the given port via SIGTERM."""
+            pid = _api_get_pid(port)
+            if pid:
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                    for _ in range(20):
+                        time.sleep(0.1)
+                        if _api_get_pid(port) is None:
+                            break
+                    return True
+                except ProcessLookupError:
+                    pass
+            return False
+
+        def _api_audit_log(action, target_name, detail):
+            """Insert audit log entry via raw SQL (no Django ORM available)."""
+            try:
+                wf.MySQLObj._ensure_connection()
+                wf.MySQLObj.cur.execute(
+                    "INSERT INTO wf_audit_log (action, target_type, target_name, detail, ip_address)"
+                    " VALUES (%s, %s, %s, %s, %s)",
+                    (action, 'service', target_name,
+                     json.dumps(detail, ensure_ascii=False),
+                     request.remote_addr)
+                )
+                wf.MySQLObj.con.commit()
+            except Exception:
+                pass
+
+        @app.route('/service/<svc>/start', methods=['POST'])
+        def api_service_start(svc):
+            if svc not in _SVC_DEFS:
+                return jsonify({'status': False, 'error': 'Unknown service: %s' % svc}), 400
+            svc_info = _SVC_DEFS[svc]
+            port = svc_info['port']
+            if _api_get_pid(port):
+                return jsonify({'status': False, 'error': 'Service is already running on port %d' % port})
+            try:
+                script_path = os.path.join(workpath, 'bin', 'service.sh')
+                subprocess.Popen(
+                    ['bash', script_path, 'start', svc],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                _api_audit_log('enable', svc, {
+                    'request': {'action': 'start', 'service': svc, 'port': port},
+                    'response': {'status': True, 'message': 'Started %s service' % svc_info['label']},
+                })
+                return jsonify({'status': True, 'running': True, 'message': '%s started' % svc_info['label']})
+            except Exception as e:
+                wf.logger.error({'status': 'Error in API service_start: %s' % (e)})
+                return jsonify({'status': False, 'error': str(e)}), 500
+
+        @app.route('/service/<svc>/stop', methods=['POST'])
+        def api_service_stop(svc):
+            if svc not in _SVC_DEFS:
+                return jsonify({'status': False, 'error': 'Unknown service: %s' % svc}), 400
+            svc_info = _SVC_DEFS[svc]
+            port = svc_info['port']
+            pid = _api_get_pid(port)
+            if not pid:
+                return jsonify({'status': False, 'error': 'Service is not running'})
+            try:
+                _api_stop_svc(port)
+                _api_audit_log('disable', svc, {
+                    'request': {'action': 'stop', 'service': svc, 'port': port, 'pid': pid},
+                    'response': {'status': True, 'message': 'Stopped %s service' % svc_info['label']},
+                })
+                return jsonify({'status': True, 'running': False, 'message': '%s stopped' % svc_info['label']})
+            except Exception as e:
+                wf.logger.error({'status': 'Error in API service_stop: %s' % (e)})
+                return jsonify({'status': False, 'error': str(e)}), 500
+
+        @app.route('/service/<svc>/restart', methods=['POST'])
+        def api_service_restart(svc):
+            if svc not in _SVC_DEFS:
+                return jsonify({'status': False, 'error': 'Unknown service: %s' % svc}), 400
+            svc_info = _SVC_DEFS[svc]
+            port = svc_info['port']
+            try:
+                _api_stop_svc(port)
+                script_path = os.path.join(workpath, 'bin', 'service.sh')
+                subprocess.Popen(
+                    ['bash', script_path, 'start', svc],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                _api_audit_log('update', svc, {
+                    'request': {'action': 'restart', 'service': svc, 'port': port},
+                    'response': {'status': True, 'message': 'Restarted %s service' % svc_info['label']},
+                })
+                return jsonify({'status': True, 'running': True, 'message': '%s restarted' % svc_info['label']})
+            except Exception as e:
+                wf.logger.error({'status': 'Error in API service_restart: %s' % (e)})
+                return jsonify({'status': False, 'error': str(e)}), 500
+
+        @app.route('/service/<svc>/status', methods=['GET'])
+        def api_service_status(svc):
+            if svc not in _SVC_DEFS:
+                return jsonify({'status': False, 'error': 'Unknown service: %s' % svc}), 400
+            svc_info = _SVC_DEFS[svc]
+            pid = _api_get_pid(svc_info['port'])
+            return jsonify({
+                'status': True,
+                'running': pid is not None,
+                'pid': pid,
+            })
+
+        ## =============================================================
+        ## CORS Headers (cross-origin from frontend port 5002 to backend port 5001)
+        ## =============================================================
+
+        @app.after_request
+        def add_cors_headers(response):
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+            return response
+
         return app
 
-    def parse_args() -> argparse.Namespace:
+
+def parse_args() -> argparse.Namespace:
     """
     Parse command-line arguments.
 
@@ -602,7 +1165,8 @@ class WorkFlow(object):
 
     return parser.parse_args()
 
-    def main() -> None:
+
+def main() -> None:
     """
     CLI entry point.
 
@@ -652,7 +1216,7 @@ class WorkFlow(object):
     if args.serve:
         api_config = wfObj.config.get('api', {})
         host = api_config.get('host', '0.0.0.0')
-        port = int(api_config.get('port', 5000))
+        port = int(api_config.get('port', 5001))
         debug = api_config.get('debug', False)
         app = wfObj.create_app()
         app.run(host=host, port=port, debug=debug)
@@ -664,7 +1228,7 @@ def create_app():
     Application factory for gunicorn.
 
     Usage:
-        gunicorn -w 4 -b 0.0.0.0:5000 'bin.WorkFlow:create_app()'
+        gunicorn -w 4 -b 0.0.0.0:5001 'bin.WorkFlow:create_app()'
 
     Returns:
         Flask: Configured Flask application

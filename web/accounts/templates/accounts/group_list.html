@@ -1,22 +1,97 @@
 {% extends "base.html" %}
+{% load static %}
 
-{% block title %}Groups - WorkFlow{% endblock %}
-{% block page_title %}Group Management{% endblock %}
+{% block title %}System - WorkFlow{% endblock %}
+{% block page_title %}System{% endblock %}
 
-{% block top_actions %}
-<a href="{% url 'accounts:group_create' %}" class="btn btn-sm btn-primary">
-  <i class="bi bi-plus-lg"></i> Create Group
-</a>
-{% endblock %}
+{% block top_actions %}{% endblock %}
 
 {% block content %}
+<!-- System Tabs -->
+<ul class="nav nav-tabs mb-3">
+  {% if perms_map.users.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:user_list' %}">
+      <i class="bi bi-people"></i> Users
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.groups.view %}
+  <li class="nav-item">
+    <a class="nav-link active" href="{% url 'accounts:group_list' %}">
+      <i class="bi bi-collection"></i> Groups
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.roles.view %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'accounts:role_list' %}">
+      <i class="bi bi-person-badge"></i> Roles
+    </a>
+  </li>
+  {% endif %}
+  {% if perms_map.system.edit %}
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:timezone' %}">
+      <i class="bi bi-clock"></i> TimeZone
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:ssl' %}">
+      <i class="bi bi-shield-lock"></i> SSL Certs
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:services' %}">
+      <i class="bi bi-hdd-rack"></i> Services
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:backup' %}">
+      <i class="bi bi-download"></i> Backup
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:backup' %}?tab=restore">
+      <i class="bi bi-arrow-counterclockwise"></i> Restore
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:version' %}">
+      <i class="bi bi-info-circle"></i> Version
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{% url 'system:license' %}">
+      <i class="bi bi-file-text"></i> License
+    </a>
+  </li>
+  {% endif %}
+</ul>
+
+<!-- Search Bar -->
+<div class="mb-2">
+  <div class="d-flex align-items-center gap-2 flex-wrap w-100">
+    {% if perms_map.groups.create %}
+    <a href="{% url 'accounts:group_create' %}" class="btn btn-sm btn-primary flex-shrink-0">
+      <i class="bi bi-plus-lg"></i> Create Group
+    </a>
+    {% endif %}
+    <div class="input-group input-group-sm ms-auto" style="max-width:320px;">
+      <span class="input-group-text"><i class="bi bi-search"></i></span>
+      <input type="text" id="table-search" class="form-control" placeholder="Search groups...">
+      <button class="btn btn-primary" type="button" id="table-search-btn">Search</button>
+    </div>
+  </div>
+</div>
+
 <div class="card">
   <div class="card-body p-0">
-    <table class="table table-hover mb-0">
+    <table class="table table-hover mb-0 sortable" id="data-table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Members</th>
+          <th data-sort="string">Name</th>
+          <th data-sort="number">Members</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -26,12 +101,24 @@
           <td><strong>{{ g.name }}</strong></td>
           <td>{{ g.user_set.count }}</td>
           <td>
+            {% if g.name in protected_names %}
+            <span class="badge bg-secondary">Default</span>
+            {% if perms_map.groups.edit %}
             <a href="{% url 'accounts:group_edit' g.id %}" class="btn btn-sm btn-outline-primary btn-action">Edit</a>
+            {% endif %}
+            {% else %}
+            {% if perms_map.groups.edit %}
+            <a href="{% url 'accounts:group_edit' g.id %}" class="btn btn-sm btn-outline-primary btn-action">Edit</a>
+            {% endif %}
+            {% if perms_map.groups.delete %}
             <form method="post" action="{% url 'accounts:group_delete' g.id %}" class="d-inline"
-                  onsubmit="return confirm('Delete group {{ g.name }}?');">
+                  data-confirm-title="Delete Group"
+                  data-confirm-message="Delete group <strong>{{ g.name }}</strong>? This cannot be undone.">
               {% csrf_token %}
-              <button type="submit" class="btn btn-sm btn-outline-danger btn-action">Delete</button>
+              <button type="button" class="btn btn-sm btn-outline-danger btn-action confirm-trigger">Delete</button>
             </form>
+            {% endif %}
+            {% endif %}
           </td>
         </tr>
         {% empty %}
@@ -43,4 +130,30 @@
     </table>
   </div>
 </div>
+{% include "_pagination.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/sortable_table.js' %}"></script>
+<script>
+(function() {
+  var input = document.getElementById('table-search');
+  if (!input) return;
+  var btn = document.getElementById('table-search-btn');
+  function doSearch() {
+    var term = input.value.toLowerCase();
+    var rows = document.querySelectorAll('#data-table tbody tr');
+    rows.forEach(function(row) {
+      var cell = row.cells[0];
+      if (!cell) return;
+      var text = cell.textContent.toLowerCase();
+      row.style.display = text.indexOf(term) !== -1 ? '' : 'none';
+    });
+  }
+  btn.addEventListener('click', doSearch);
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doSearch();
+  });
+})();
+</script>
 {% endblock %}

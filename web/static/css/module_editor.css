@@ -1,0 +1,178 @@
+/* =============================================================
+   Module Editor Styles
+   ============================================================= */
+
+/* -- Make scrollable body a flex container for the editor page -- */
+.page-editor {
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 12px !important;
+}
+
+/* -- Two-panel layout -- */
+.module-editor-wrapper {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #fff;
+}
+
+/* -- Left: Code editor -- */
+.module-editor-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.module-editor-main form {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.editor-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    flex-shrink: 0;
+}
+
+.editor-toolbar strong {
+    font-size: 13px;
+}
+
+.module-editor-main .CodeMirror {
+    font-size: 13px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+.module-editor-main .CodeMirror-scroll {
+    overflow: auto !important;
+}
+
+/* -- Right: Introspection panel -- */
+.module-editor-panel {
+    width: 260px;
+    min-width: 260px;
+    border-left: 1px solid #dee2e6;
+    display: flex;
+    flex-direction: column;
+    background: #f8f9fa;
+    overflow: hidden;
+}
+
+.panel-header {
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+    border-bottom: 1px solid #dee2e6;
+    background: #f8f9fa;
+    flex-shrink: 0;
+}
+
+.panel-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px 12px;
+}
+
+.prop-section {
+    margin-bottom: 8px;
+}
+
+.prop-section label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #6c757d;
+    margin-bottom: 2px;
+}
+
+.prop-value {
+    font-size: 12px;
+    color: #333;
+}
+
+.prop-divider {
+    border-top: 1px solid #dee2e6;
+    margin: 8px 0;
+}
+
+/* -- Method blocks -- */
+.method-block {
+    margin-bottom: 10px;
+    padding: 6px 8px;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.method-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #0d6efd;
+    font-family: monospace;
+    cursor: pointer;
+}
+.method-name:hover {
+    text-decoration: underline;
+}
+
+.method-block.method-active {
+    border-color: #0d6efd;
+    background: #e8f0fe;
+}
+
+.method-desc {
+    font-size: 10px;
+    color: #6c757d;
+    margin-bottom: 4px;
+}
+
+.method-params {
+    margin-top: 4px;
+}
+
+.param-item {
+    font-size: 10px;
+    padding: 1px 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.param-item code {
+    font-size: 10px;
+    color: #333;
+    background: #e9ecef;
+    padding: 0 4px;
+    border-radius: 2px;
+}
+
+.param-type {
+    font-size: 9px;
+    color: #6c757d;
+    background: #f0f0f0;
+    padding: 0 3px;
+    border-radius: 2px;
+}
+
+.param-req {
+    color: #dc3545;
+    font-weight: 700;
+    font-size: 12px;
+}

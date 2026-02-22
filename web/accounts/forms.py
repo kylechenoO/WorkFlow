@@ -7,11 +7,11 @@ Forms for user, group, and role management.
 ## import django pkgs
 from django import forms
 from django.contrib.auth.models import User, Group
-from .models import Role
+from .models import Role, Permission, GroupPermission
 
 
 class UserCreateForm(forms.ModelForm):
-    """Form for creating a new user."""
+    """Form for creating a new user with group/role assignment."""
 
     password = forms.CharField(
         widget=forms.PasswordInput(attrs={'class': 'form-control'}),
@@ -21,6 +21,18 @@ class UserCreateForm(forms.ModelForm):
     password_confirm = forms.CharField(
         widget=forms.PasswordInput(attrs={'class': 'form-control'}),
         label='Confirm Password'
+    )
+    groups = forms.ModelMultipleChoiceField(
+        queryset=Group.objects.all().order_by('name'),
+        required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'form-check-input'}),
+        label='Groups'
+    )
+    roles = forms.ModelMultipleChoiceField(
+        queryset=Role.objects.all().order_by('name'),
+        required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'form-check-input'}),
+        label='Roles'
     )
 
     class Meta:
@@ -33,6 +45,20 @@ class UserCreateForm(forms.ModelForm):
             'last_name': forms.TextInput(attrs={'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ## pre-select default 'user' group and role for new users
+        try:
+            default_group = Group.objects.filter(name='user')
+            self.fields['groups'].initial = default_group
+        except Group.DoesNotExist:
+            pass
+        try:
+            default_role = Role.objects.filter(name='user')
+            self.fields['roles'].initial = default_role
+        except Role.DoesNotExist:
+            pass
 
     def clean(self):
         cleaned_data = super().clean()
@@ -49,11 +75,20 @@ class UserCreateForm(forms.ModelForm):
         user.set_password(self.cleaned_data['password'])
         if commit:
             user.save()
+            ## save M2M for groups
+            self.save_m2m()
+            ## save roles (custom M2M via Role.users)
+            selected_roles = self.cleaned_data.get('roles', [])
+            for role in Role.objects.all():
+                if role in selected_roles:
+                    role.users.add(user)
+                else:
+                    role.users.remove(user)
         return user
 
 
 class UserEditForm(forms.ModelForm):
-    """Form for editing an existing user."""
+    """Form for editing an existing user with group/role assignment."""
 
     password = forms.CharField(
         widget=forms.PasswordInput(attrs={'class': 'form-control'}),
@@ -66,6 +101,18 @@ class UserEditForm(forms.ModelForm):
         required=False,
         label='Confirm Password'
     )
+    groups = forms.ModelMultipleChoiceField(
+        queryset=Group.objects.all().order_by('name'),
+        required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'form-check-input'}),
+        label='Groups'
+    )
+    roles = forms.ModelMultipleChoiceField(
+        queryset=Role.objects.all().order_by('name'),
+        required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'form-check-input'}),
+        label='Roles'
+    )
 
     class Meta:
         model = User
@@ -77,6 +124,13 @@ class UserEditForm(forms.ModelForm):
             'last_name': forms.TextInput(attrs={'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ## pre-select current groups/roles if editing
+        if self.instance and self.instance.pk:
+            self.fields['groups'].initial = self.instance.groups.all()
+            self.fields['roles'].initial = self.instance.wf_roles.all()
 
     def clean(self):
         cleaned_data = super().clean()
@@ -95,11 +149,40 @@ class UserEditForm(forms.ModelForm):
             user.set_password(password)
         if commit:
             user.save()
+            ## save M2M for groups
+            self.save_m2m()
+            ## save roles (custom M2M via Role.users)
+            selected_roles = self.cleaned_data.get('roles', [])
+            for role in Role.objects.all():
+                if role in selected_roles:
+                    role.users.add(user)
+                else:
+                    role.users.remove(user)
         return user
 
 
+class ProfileForm(forms.ModelForm):
+    """Form for users to edit their own profile info."""
+
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'email']
+        widgets = {
+            'first_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'last_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+        }
+
+
 class GroupForm(forms.ModelForm):
-    """Form for creating/editing a group."""
+    """Form for creating/editing a group with permission assignment."""
+
+    permissions = forms.ModelMultipleChoiceField(
+        queryset=Permission.objects.all().order_by('page', 'action'),
+        required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'form-check-input'}),
+        label='Permissions'
+    )
 
     class Meta:
         model = Group
@@ -108,13 +191,43 @@ class GroupForm(forms.ModelForm):
             'name': forms.TextInput(attrs={'class': 'form-control'}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ## pre-select current permissions if editing
+        if self.instance and self.instance.pk:
+            current_perm_ids = GroupPermission.objects.filter(
+                group=self.instance
+            ).values_list('permission_id', flat=True)
+            self.fields['permissions'].initial = Permission.objects.filter(id__in=current_perm_ids)
+
+    def save(self, commit=True):
+        group = super().save(commit=commit)
+        if commit and group.pk:
+            ## update group permissions
+            selected = self.cleaned_data.get('permissions', [])
+            ## remove old
+            GroupPermission.objects.filter(group=group).exclude(
+                permission__in=selected
+            ).delete()
+            ## add new
+            for perm in selected:
+                GroupPermission.objects.get_or_create(group=group, permission=perm)
+        return group
+
 
 class RoleForm(forms.ModelForm):
-    """Form for creating/editing a role."""
+    """Form for creating/editing a role with permission assignment."""
+
+    permissions = forms.ModelMultipleChoiceField(
+        queryset=Permission.objects.all().order_by('page', 'action'),
+        required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'form-check-input'}),
+        label='Permissions'
+    )
 
     class Meta:
         model = Role
-        fields = ['name', 'description']
+        fields = ['name', 'description', 'permissions']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),

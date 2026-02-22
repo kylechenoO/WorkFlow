@@ -2,49 +2,101 @@
 {% load static %}
 
 {% block title %}{% if is_create %}Create Workflow{% else %}Edit: {{ flow_name }}{% endif %} - WorkFlow{% endblock %}
-{% block page_title %}{% if is_create %}Create Workflow{% else %}Edit: {{ flow_name }}{% endif %}{% endblock %}
+
+{% block page_title %}
+<form method="post" id="flow-form" style="display:inline-flex;align-items:center;gap:8px;margin:0;width:100%;">
+  {% csrf_token %}
+  <input type="hidden" name="procedures_json" id="procedures_json" value="">
+  {% if not is_create %}
+  <input type="hidden" name="original_flow_name" value="{{ flow_name }}">
+  {% endif %}
+  <input type="text" id="flow_name" name="flow_name"
+         value="{{ flow_name }}" required placeholder="workflow_name"
+         style="width:180px;font-size:13px;padding:3px 8px;border:1px solid #dee2e6;border-radius:4px;">
+  <span style="color:#6c757d;font-size:12px;">|</span>
+  {% if not is_create %}
+  <a href="{% url 'workflows:flow_versions' flow_name %}" class="btn btn-sm btn-outline-info" style="font-size:12px;padding:2px 8px;">
+    <i class="bi bi-clock-history"></i> History
+  </a>
+  {% endif %}
+  <button type="submit" class="btn btn-sm btn-primary" id="btn-save" style="font-size:12px;padding:2px 10px;">
+    <i class="bi bi-check-lg"></i> {% if is_create %}Create{% else %}Save{% endif %}
+  </button>
+  <a href="{% url 'workflows:flow_list' %}" class="btn btn-sm btn-secondary" style="font-size:12px;padding:2px 10px;">
+    <i class="bi bi-x-lg"></i> Cancel
+  </a>
+</form>
+{% endblock %}
 
 {% block extra_css %}
 <!-- CodeMirror CSS -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldgutter.min.css">
+<!-- Drawflow CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.59/dist/drawflow.min.css">
+<!-- Visual Editor CSS -->
+<link rel="stylesheet" href="{% static 'css/visual_editor.css' %}?v=4">
 {% endblock %}
 
 {% block content %}
-<form method="post" id="flow-form">
-  {% csrf_token %}
-
-  {% if is_create %}
-  <!-- Flow Name (only for create) -->
-  <div class="mb-3" style="max-width: 400px;">
-    <label for="flow_name" class="form-label fw-semibold">Workflow Name</label>
-    <input type="text" class="form-control" id="flow_name" name="flow_name"
-           value="{{ flow_name }}" required placeholder="e.g. my_workflow">
-  </div>
-  {% endif %}
-
-  <!-- Hidden field for procedures JSON (submitted with form) -->
-  <input type="hidden" name="procedures_json" id="procedures_json" value="">
-
+<div id="editor-root" style="display:flex;flex-direction:column;flex:1;min-height:0;">
   <!-- Editor Tabs -->
-  <ul class="nav nav-tabs mb-0" role="tablist">
+  <ul class="nav nav-tabs mb-0" role="tablist" style="flex-shrink:0;">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="tab-form" data-bs-toggle="tab"
+      <button class="nav-link active" id="tab-visual" data-bs-toggle="tab"
+              data-bs-target="#pane-visual" type="button" role="tab">
+        <i class="bi bi-diagram-3"></i> Visual
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-form" data-bs-toggle="tab"
               data-bs-target="#pane-form" type="button" role="tab">
-        <i class="bi bi-ui-checks-grid"></i> Form Editor
+        <i class="bi bi-ui-checks-grid"></i> Form
       </button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="tab-json" data-bs-toggle="tab"
               data-bs-target="#pane-json" type="button" role="tab">
-        <i class="bi bi-code-slash"></i> JSON Editor
+        <i class="bi bi-code-slash"></i> JSON
       </button>
     </li>
   </ul>
 
-  <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white">
+  <div class="tab-content border border-top-0 bg-white" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+    <!-- Visual Editor Pane -->
+    <div class="tab-pane fade show active" id="pane-visual" role="tabpanel" style="padding:0;flex:1;min-height:0;display:flex;flex-direction:column;">
+      <div class="visual-editor-wrapper">
+        <!-- Left: Module Palette -->
+        <div class="visual-palette" id="visual-palette">
+          <!-- Populated by VisualEditor.buildPalette() -->
+        </div>
+
+        <!-- Center: Canvas -->
+        <div class="visual-canvas" id="visual-canvas">
+          <div id="drawflow" style="width:100%;height:100%;"></div>
+          <!-- Zoom toolbar -->
+          <div class="canvas-toolbar">
+            <button type="button" id="btn-zoom-in" title="Zoom In"><i class="bi bi-zoom-in"></i></button>
+            <button type="button" id="btn-zoom-out" title="Zoom Out"><i class="bi bi-zoom-out"></i></button>
+            <button type="button" id="btn-zoom-reset" title="Fit to View"><i class="bi bi-arrows-fullscreen"></i></button>
+          </div>
+        </div>
+
+        <!-- Right: Properties Panel -->
+        <div class="visual-properties" id="visual-properties">
+          <div class="properties-placeholder" id="properties-placeholder">
+            <i class="bi bi-cursor"></i>
+            <div>Select a node to<br>edit its properties</div>
+          </div>
+          <div id="properties-form" style="display:none;">
+            <!-- Populated when node is selected -->
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Form Editor Pane -->
-    <div class="tab-pane fade show active" id="pane-form" role="tabpanel">
+    <div class="tab-pane fade" id="pane-form" role="tabpanel" style="flex:1;min-height:0;overflow-y:auto;padding:12px;">
       <div id="steps-container">
         <!-- Steps rendered by JavaScript -->
       </div>
@@ -54,19 +106,11 @@
     </div>
 
     <!-- JSON Editor Pane -->
-    <div class="tab-pane fade" id="pane-json" role="tabpanel">
+    <div class="tab-pane fade" id="pane-json" role="tabpanel" style="flex:1;min-height:0;display:flex;flex-direction:column;padding:0;">
       <textarea id="json-editor">{{ procedures_json }}</textarea>
     </div>
   </div>
-
-  <!-- Action Buttons -->
-  <div class="d-flex gap-2 mt-3">
-    <button type="submit" class="btn btn-primary" id="btn-save">
-      <i class="bi bi-check-lg"></i> {% if is_create %}Create{% else %}Save{% endif %}
-    </button>
-    <a href="{% url 'workflows:flow_list' %}" class="btn btn-secondary">Cancel</a>
-  </div>
-</form>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -79,30 +123,53 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldgutter.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/brace-fold.min.js"></script>
 
+<!-- Drawflow JS -->
+<script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.59/dist/drawflow.min.js"></script>
+
 <!-- Flow Editor JS -->
-<script src="{% static 'js/flow_editor.js' %}"></script>
+<script src="{% static 'js/module_registry.js' %}?v=4"></script>
+<script src="{% static 'js/visual_editor.js' %}?v=8"></script>
+<script src="{% static 'js/flow_editor.js' %}?v=14"></script>
 <script>
   (function () {
+    // make page body fill available height — convert scrollable body to flex container
+    // the scrollable body is the parent of #editor-root
+    var editorRoot = document.getElementById('editor-root');
+    if (editorRoot && editorRoot.parentElement) {
+      var scrollBody = editorRoot.parentElement;
+      scrollBody.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;padding:0;min-height:0;';
+    }
+
     // parse initial data
     var rawJson = {{ procedures_json|safe }};
     var initialData = (typeof rawJson === 'string') ? JSON.parse(rawJson) : rawJson;
 
-    // init editor
-    FlowEditor.init(initialData);
+    // load dynamic module registry from API, then init editor
+    ModuleRegistry.loadFromAPI(function () {
+      // init editor (after API data merged into catalog)
+      FlowEditor.init(initialData);
 
-    // intercept form submit to sync data
-    document.getElementById('flow-form').addEventListener('submit', function (e) {
-      // validate
-      var err = FlowEditor.validate();
-      if (err) {
-        e.preventDefault();
-        alert(err);
-        return false;
-      }
+      // intercept form submit to sync data
+      document.getElementById('flow-form').addEventListener('submit', function (e) {
+        // validate
+        var err = FlowEditor.validate();
+        if (err) {
+          e.preventDefault();
+          showToast(err, 'danger');
+          return false;
+        }
 
-      // serialize to hidden field
-      var data = FlowEditor.getData();
-      document.getElementById('procedures_json').value = JSON.stringify(data);
+        // serialize to hidden field — procedures + connections + positions, strip _visual metadata
+        var data = FlowEditor.getData();
+        var clean = { procedures: (data && data.procedures) ? data.procedures : [] };
+        if (data && data._connections && data._connections.length > 0) {
+            clean._connections = data._connections;
+        }
+        if (data && data._positions && Object.keys(data._positions).length > 0) {
+            clean._positions = data._positions;
+        }
+        document.getElementById('procedures_json').value = JSON.stringify(clean);
+      });
     });
   })();
 </script>

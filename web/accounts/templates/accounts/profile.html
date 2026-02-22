@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - WorkFlow{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <!-- User Info Card -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header"><strong>User Information</strong></div>
+      <div class="card-body">
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="update_profile">
+
+          <div class="mb-3">
+            <label class="form-label">Username</label>
+            <input type="text" class="form-control" value="{{ user.username }}" readonly disabled>
+            <div class="form-text">Username cannot be changed.</div>
+          </div>
+
+          {% for field in form %}
+          <div class="mb-3">
+            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}
+            <div class="form-text">{{ field.help_text }}</div>
+            {% endif %}
+            {% if field.errors %}
+            <div class="text-danger small mt-1">{{ field.errors.0 }}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg"></i> Update Profile
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Groups & Roles Card -->
+    <div class="card mt-3">
+      <div class="card-header"><strong>Groups &amp; Roles</strong></div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">Groups</label>
+          <div>
+            {% for g in user_groups %}
+            <span class="badge bg-info text-dark">{{ g.name }}</span>
+            {% empty %}
+            <span class="text-muted small">No groups assigned</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div>
+          <label class="form-label fw-semibold" style="font-size:13px;">Roles</label>
+          <div>
+            {% for r in user_roles %}
+            <span class="badge bg-secondary">{{ r.name }}</span>
+            {% empty %}
+            <span class="text-muted small">No roles assigned</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="form-text mt-2">Contact an administrator to change group or role assignments.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Password Card -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header"><strong>Change Password</strong></div>
+      <div class="card-body">
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="change_password">
+
+          <div class="mb-3">
+            <label for="current_password" class="form-label">Current Password</label>
+            <input type="password" class="form-control" id="current_password" name="current_password" required>
+          </div>
+          <div class="mb-3">
+            <label for="new_password" class="form-label">New Password</label>
+            <input type="password" class="form-control" id="new_password" name="new_password" required minlength="8">
+            <div class="form-text">Minimum 8 characters.</div>
+          </div>
+          <div class="mb-3">
+            <label for="confirm_password" class="form-label">Confirm New Password</label>
+            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required minlength="8">
+          </div>
+
+          <button type="submit" class="btn btn-warning">
+            <i class="bi bi-key"></i> Change Password
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Account Details Card -->
+    <div class="card mt-3">
+      <div class="card-header"><strong>Account Details</strong></div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tr>
+            <td class="text-muted" style="width:40%">Date Joined</td>
+            <td>{{ user.date_joined|date:"Y-m-d H:i" }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">Last Login</td>
+            <td>{{ user.last_login|date:"Y-m-d H:i"|default:"Never" }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">Status</td>
+            <td>
+              {% if user.is_active %}
+              <span class="badge badge-enabled">Active</span>
+              {% else %}
+              <span class="badge badge-disabled">Inactive</span>
+              {% endif %}
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

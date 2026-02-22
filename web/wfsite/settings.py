@@ -55,6 +55,8 @@ INSTALLED_APPS = [
     'audit',
     'syslog_viewer',
     'workflows',
+    'modules',
+    'system',
 ]
 
 MIDDLEWARE = [
@@ -67,6 +69,10 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     ## audit middleware
     'audit.middleware.AuditMiddleware',
+    ## system timezone middleware
+    'system.middleware.TimezoneMiddleware',
+    ## request logging middleware (feeds wf_reqlog for frontend service logs)
+    'system.middleware.RequestLogMiddleware',
 ]
 
 ROOT_URLCONF = 'wfsite.urls'
@@ -82,6 +88,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'accounts.context_processors.user_permissions',
+                'system.context_processors.app_info',
             ],
         },
     },
@@ -149,5 +157,17 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 ## =============================================================
 
 WF_API_HOST = WF_CONFIG.get('api', {}).get('host', '127.0.0.1')
-WF_API_PORT = WF_CONFIG.get('api', {}).get('port', 5000)
-WF_API_BASE_URL = 'http://%s:%s' % (WF_API_HOST, WF_API_PORT)
+## 0.0.0.0 is a server bind address — use 127.0.0.1 for outbound client connections
+WF_API_CLIENT_HOST = '127.0.0.1' if WF_API_HOST in ('0.0.0.0', '::') else WF_API_HOST
+WF_API_PORT = WF_CONFIG.get('api', {}).get('port', 5001)
+WF_API_BASE_URL = 'http://%s:%s' % (WF_API_CLIENT_HOST, WF_API_PORT)
+
+## =============================================================
+## Message Tag Mapping (Bootstrap toast class compatibility)
+## =============================================================
+
+## Django uses 'error' but Bootstrap uses 'danger' for text-bg-* classes
+from django.contrib.messages import constants as messages
+MESSAGE_TAGS = {
+    messages.ERROR: 'danger',
+}

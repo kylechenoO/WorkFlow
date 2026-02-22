@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Diff v{{ v1.version }} vs v{{ v2.version }} — {{ flow.flow_name }} - WorkFlow{% endblock %}
+{% block page_title %}Diff — {{ flow.flow_name }}{% endblock %}
+
+{% block top_actions %}
+<a href="{% url 'workflows:flow_versions' flow.flow_name %}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-arrow-left"></i> Back to History
+</a>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/css/diff2html.min.css">
+<style>
+.d2h-wrapper { font-size: 13px; }
+.diff-header { display: flex; gap: 20px; align-items: center; margin-bottom: 12px; }
+.diff-header .badge { font-size: 13px; padding: 6px 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="diff-header">
+  <span class="badge bg-secondary">v{{ v1.version }} — {{ v1.created_at|date:"Y-m-d H:i:s" }}</span>
+  <i class="bi bi-arrow-right"></i>
+  <span class="badge bg-primary">v{{ v2.version }} — {{ v2.created_at|date:"Y-m-d H:i:s" }}</span>
+</div>
+
+<!-- Hidden textareas for safe content embedding -->
+<textarea id="diff-old" style="display:none;">{{ v1_content }}</textarea>
+<textarea id="diff-new" style="display:none;">{{ v2_content }}</textarea>
+
+<div class="card">
+  <div class="card-body p-0" id="diff-container"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/js/diff2html.min.js"></script>
+<script>
+(function() {
+  var oldText = document.getElementById('diff-old').value;
+  var newText = document.getElementById('diff-new').value;
+
+  var diff = Diff.createTwoFilesPatch(
+    'v{{ v1.version }}', 'v{{ v2.version }}',
+    oldText, newText,
+    'v{{ v1.version }} ({{ v1.created_at|date:"Y-m-d H:i:s" }})',
+    'v{{ v2.version }} ({{ v2.created_at|date:"Y-m-d H:i:s" }})'
+  );
+
+  var html = Diff2Html.html(diff, {
+    drawFileList: false,
+    matching: 'lines',
+    outputFormat: 'side-by-side'
+  });
+
+  document.getElementById('diff-container').innerHTML = html;
+})();
+</script>
+{% endblock %}

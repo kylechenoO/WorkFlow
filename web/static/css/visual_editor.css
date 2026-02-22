@@ -1,0 +1,410 @@
+/* =============================================================
+   Visual Flow Editor Styles
+   ============================================================= */
+
+/* -- Editor root: flex column filling its parent (scrollable body div) -- */
+#editor-root {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    height: 100% !important;
+}
+
+/* -- Tab bar: fixed size -- */
+#editor-root > .nav-tabs {
+    flex-shrink: 0 !important;
+}
+
+/* -- Tab content wrapper: fill remaining height -- */
+#editor-root > .tab-content {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+
+/* -- Hide inactive tab panes completely -- */
+#editor-root > .tab-content > .tab-pane {
+    display: none !important;
+}
+
+/* -- Active tab pane: flex column filling parent
+     Override Bootstrap .tab-pane.active { display: block } -- */
+#editor-root > .tab-content > .tab-pane.active.show {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+
+/* -- Form pane: scroll within its flex area -- */
+#editor-root > .tab-content > #pane-form.active.show {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 12px !important;
+}
+
+/* -- JSON pane: CodeMirror fills available space -- */
+#pane-json .CodeMirror {
+    flex: 1 1 0% !important;
+    height: auto !important;
+    min-height: 0 !important;
+}
+
+/* -- Visual pane: wrapper fills parent -- */
+#pane-visual .visual-editor-wrapper {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+}
+
+/* -- Three-panel layout -- */
+.visual-editor-wrapper {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    border-top: 1px solid #dee2e6;
+    overflow: hidden;
+    background: #fff;
+}
+
+/* -- Left: Module Palette -- */
+.visual-palette {
+    width: 220px;
+    min-width: 220px;
+    max-width: 220px;
+    border-right: 1px solid #dee2e6;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: #f8f9fa;
+    padding: 8px;
+    user-select: none;
+}
+
+.palette-search {
+    margin-bottom: 8px;
+    position: sticky;
+    top: -8px;
+    z-index: 5;
+    background: #f8f9fa;
+    padding: 4px 0;
+}
+
+.palette-search input {
+    font-size: 11px;
+    padding: 4px 8px;
+}
+
+.palette-category {
+    margin-bottom: 6px;
+}
+
+.palette-category-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #6c757d;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.palette-category-header:hover {
+    background: #e9ecef;
+}
+
+.palette-category-header i.chevron {
+    margin-left: auto;
+    font-size: 10px;
+    transition: transform 0.15s;
+}
+
+.palette-category-header.collapsed i.chevron {
+    transform: rotate(-90deg);
+}
+
+.palette-items {
+    padding-left: 4px;
+}
+
+.palette-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    margin-bottom: 2px;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-left: 3px solid var(--module-color, #6c757d);
+    border-radius: 4px;
+    font-size: 11px;
+    color: #333;
+    cursor: grab;
+    transition: background 0.1s, box-shadow 0.1s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.palette-item:hover {
+    background: #e9ecef;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.palette-item:active {
+    cursor: grabbing;
+}
+
+.palette-item i {
+    font-size: 12px;
+    color: var(--module-color, #6c757d);
+    flex-shrink: 0;
+}
+
+/* -- Center: Canvas -- */
+.visual-canvas {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    overflow: hidden;
+    background: #fff;
+    background-image:
+        radial-gradient(circle, #e0e0e0 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+.visual-canvas .drawflow {
+    width: 100%;
+    height: 100%;
+}
+
+/* -- Right: Properties Panel -- */
+.visual-properties {
+    width: 280px;
+    min-width: 280px;
+    border-left: 1px solid #dee2e6;
+    overflow-y: auto;
+    background: #f8f9fa;
+    padding: 12px;
+}
+
+.properties-placeholder {
+    text-align: center;
+    padding-top: 60px;
+    color: #adb5bd;
+}
+
+.properties-placeholder i {
+    font-size: 32px;
+}
+
+.properties-placeholder div {
+    margin-top: 8px;
+    font-size: 12px;
+}
+
+.prop-section {
+    margin-bottom: 12px;
+}
+
+.prop-section label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #6c757d;
+    margin-bottom: 3px;
+}
+
+.prop-section input,
+.prop-section select,
+.prop-section textarea {
+    width: 100%;
+    padding: 4px 8px;
+    font-size: 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.prop-section textarea {
+    min-height: 50px;
+    resize: vertical;
+    font-family: monospace;
+}
+
+.prop-section input:focus,
+.prop-section select:focus,
+.prop-section textarea:focus {
+    outline: none;
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 2px rgba(13,110,253,0.15);
+}
+
+.prop-section .prop-desc {
+    font-size: 10px;
+    color: #adb5bd;
+    margin-top: 2px;
+}
+
+.prop-divider {
+    border-top: 1px solid #dee2e6;
+    margin: 10px 0;
+}
+
+.prop-header {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+/* -- Drawflow Node Overrides -- */
+.drawflow .drawflow-node {
+    border-radius: 8px;
+    border: 2px solid #dee2e6;
+    background: #fff !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    min-width: 170px;
+    padding: 0;
+    cursor: move;
+}
+
+.drawflow .drawflow-node.selected {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 3px rgba(13,110,253,0.2);
+    background: #fff !important;
+}
+
+.drawflow .drawflow-node .node-header {
+    border-radius: 6px 6px 0 0;
+    padding: 6px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #fff;
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.drawflow .drawflow-node .node-body {
+    padding: 8px 10px;
+}
+
+.drawflow .drawflow-node .node-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 2px;
+}
+
+.drawflow .drawflow-node .node-method {
+    font-size: 10px;
+    color: #6c757d;
+}
+
+.drawflow .drawflow-node .node-order {
+    position: absolute;
+    top: -8px;
+    left: -8px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #6c757d;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+.drawflow .drawflow-node .node-delete {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #dc3545;
+    color: #fff;
+    font-size: 12px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    border: none;
+    padding: 0;
+    line-height: 1;
+}
+
+.drawflow .drawflow-node:hover .node-delete,
+.drawflow .drawflow-node.selected .node-delete {
+    display: flex;
+}
+
+/* -- Connection Lines -- */
+.drawflow .connection .main-path {
+    stroke: #adb5bd;
+    stroke-width: 2;
+}
+
+.drawflow .connection .main-path:hover {
+    stroke: #0d6efd;
+    stroke-width: 3;
+}
+
+/* -- Input/Output Ports -- */
+.drawflow .drawflow-node .input,
+.drawflow .drawflow-node .output {
+    width: 12px;
+    height: 12px;
+    border: 2px solid #adb5bd;
+    background: #fff;
+}
+
+.drawflow .drawflow-node .input:hover,
+.drawflow .drawflow-node .output:hover {
+    border-color: #0d6efd;
+    background: #e7f1ff;
+}
+
+/* -- Canvas toolbar -- */
+.canvas-toolbar {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    display: flex;
+    gap: 4px;
+    z-index: 20;
+}
+
+.canvas-toolbar button {
+    width: 30px;
+    height: 30px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: #fff;
+    color: #6c757d;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.canvas-toolbar button:hover {
+    background: #e9ecef;
+    color: #333;
+}
+
+

@@ -9,7 +9,7 @@ with the application's structured logging system.
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import build in pkgs
@@ -29,7 +29,7 @@ class MySQL(object):
         - Perform insert, update, and upsert operations
         - Handle transactions safely with rollback support
     """
-    
+
     def __init__(self, logger: object) -> None:
         """
         Initialize the MySQL manager.
@@ -41,6 +41,9 @@ class MySQL(object):
         self.logger = logger
         self.con = None
         self.cur = None
+
+        ## store connection params for reconnect
+        self._connect_params = None
 
     def dicts2df(self, data: dict) -> dict:
         """
@@ -76,9 +79,19 @@ class MySQL(object):
         self.logger.debug({'db.host': host})
         self.logger.debug({'db.port': port})
         self.logger.debug({'db.username': username})
-        self.logger.debug({'db.password': password})
+        self.logger.debug({'db.password': '********'})
         self.logger.debug({'db.database': database})
         self.logger.debug({'db.charset': charset})
+
+        ## store params for reconnect
+        self._connect_params = {
+            'host': host,
+            'port': int(port),
+            'username': username,
+            'password': password,
+            'database': database,
+            'charset': charset,
+        }
 
         try:
             ## connect to db
@@ -90,7 +103,7 @@ class MySQL(object):
                 database = database,
                 charset = charset
             )
-            
+
             ## gen cursor
             if self.con.open:
                 self.cur = self.con.cursor()
@@ -100,7 +113,7 @@ class MySQL(object):
             else:
                 self.logger.error({'status': 'Failed to connect to MySQL database'})
                 return False
-                
+
         ## error handling
         except Error as e:
             self.logger.error({'status': "Error connecting to MySQL: %s" % (e)})
@@ -134,6 +147,36 @@ class MySQL(object):
             self.logger.error({'status': 'Error disconnecting from MySQL: %s' % (e)})
 
         return None
+
+    def _ensure_connection(self) -> bool:
+        """
+        Verify the database connection is alive and reconnect if needed.
+
+        This handles stale connections caused by server-side timeouts
+        or process forking (e.g. gunicorn workers).
+
+        Returns:
+            bool: True if connection is usable, False otherwise
+        """
+
+        try:
+            ## fast check — ping the connection
+            if self.con and self.con.open:
+                self.con.ping(reconnect=True)
+                if not self.cur or self.cur.connection is None:
+                    self.cur = self.con.cursor()
+                return True
+        except Exception:
+            pass
+
+        ## reconnect using stored params
+        if self._connect_params:
+            self.logger.info({'status': 'Reconnecting to MySQL...'})
+            p = self._connect_params
+            return self.connect(p['host'], p['port'], p['username'], p['password'], p['database'], p['charset'])
+
+        self.logger.error({'status': 'No connection params available for reconnect'})
+        return False
 
     def showDatabases(self) -> dict:
         """
@@ -173,6 +216,9 @@ class MySQL(object):
         Returns:
             list: List of result rows as dictionaries
         """
+
+        ## ensure connection is alive
+        self._ensure_connection()
 
         try:
             ## check db connection
@@ -225,6 +271,9 @@ class MySQL(object):
         Returns:
             bool: True on success, False on failure
         """
+
+        ## ensure connection is alive
+        self._ensure_connection()
 
         ## transfer dicts to df
         df = self.dicts2df(data)
@@ -311,6 +360,9 @@ class MySQL(object):
             bool: True on success, False on failure
         """
 
+        ## ensure connection is alive
+        self._ensure_connection()
+
         ## transfer dicts to df
         df = self.dicts2df(data)
         try:
@@ -376,6 +428,9 @@ class MySQL(object):
         Returns:
             bool: True on success, False on failure
         """
+
+        ## ensure connection is alive
+        self._ensure_connection()
 
         ## transfer dicts to df
         df = self.dicts2df(data)

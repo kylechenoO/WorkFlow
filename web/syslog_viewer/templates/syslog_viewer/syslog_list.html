@@ -1,7 +1,32 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Syslog - WorkFlow{% endblock %}
 {% block page_title %}Workflow Syslog{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/flatpickr.min.css' %}">
+<style>
+.syslog-flatpickr { font-size: 13px; }
+.flatpickr-now-btn {
+  display: block;
+  width: 100%;
+  padding: 6px 0;
+  margin-top: 4px;
+  border: none;
+  border-top: 1px solid #e6e6e6;
+  background: transparent;
+  color: #0d6efd;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+.flatpickr-now-btn:hover {
+  background: #f0f0f0;
+}
+</style>
+{% endblock %}
 
 {% block content %}
 <!-- Filters -->
@@ -18,20 +43,24 @@
     </div>
     <div class="col-md-2">
       <label class="form-label small">From</label>
-      <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filter_date_from }}">
+      <input type="text" name="date_from" id="date_from" class="form-control form-control-sm syslog-flatpickr" placeholder="Select date/time" value="{{ filter_date_from }}">
     </div>
     <div class="col-md-2">
       <label class="form-label small">To</label>
-      <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filter_date_to }}">
+      <input type="text" name="date_to" id="date_to" class="form-control form-control-sm syslog-flatpickr" placeholder="Select date/time" value="{{ filter_date_to }}">
     </div>
-    <div class="col-md-3">
+    <div class="col-md-4">
       <label class="form-label small">Search Message</label>
-      <input type="text" name="search" class="form-control form-control-sm" placeholder="Search..." value="{{ filter_search }}">
-    </div>
-    <div class="col-md-2">
-      <button type="submit" class="btn btn-sm btn-primary w-100">
-        <i class="bi bi-funnel"></i> Filter
-      </button>
+      <div class="d-flex gap-1">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input type="text" name="search" class="form-control" placeholder="Search..." value="{{ filter_search }}">
+          <button class="btn btn-primary" type="submit">Search</button>
+        </div>
+        <button type="button" id="export-xlsx-btn" class="btn btn-sm btn-outline-secondary flex-shrink-0">
+          <i class="bi bi-download"></i> Export
+        </button>
+      </div>
     </div>
   </form>
 </div>
@@ -39,12 +68,12 @@
 <!-- Syslog Table -->
 <div class="card">
   <div class="card-body p-0">
-    <table class="table table-hover mb-0" style="font-size: 0.85rem;">
+    <table class="table table-hover mb-0 sortable" style="font-size: 0.85rem;">
       <thead>
         <tr>
-          <th style="width: 170px;">Time</th>
-          <th style="width: 80px;">Level</th>
-          <th style="width: 150px;">Logger</th>
+          <th style="width: 170px;" data-sort="date">Time</th>
+          <th style="width: 80px;" data-sort="string">Level</th>
+          <th style="width: 150px;" data-sort="string">Logger</th>
           <th>Message</th>
         </tr>
       </thead>
@@ -75,4 +104,52 @@
     </table>
   </div>
 </div>
+{% include "_pagination.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="{% static 'js/sortable_table.js' %}"></script>
+<script src="{% static 'js/flatpickr.min.js' %}"></script>
+<script>
+document.getElementById('export-xlsx-btn').addEventListener('click', function() {
+  var table = document.querySelector('table');
+  var clone = table.cloneNode(true);
+  clone.querySelectorAll('tr').forEach(function(tr) {
+    if (tr.style.display === 'none') tr.remove();
+  });
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.table_to_sheet(clone);
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  XLSX.writeFile(wb, 'syslog.xlsx');
+});
+</script>
+<script>
+(function() {
+  var fpOpts = {
+    enableTime: true,
+    dateFormat: 'Y-m-d H:i',
+    time_24hr: true,
+    allowInput: true
+  };
+
+  // "From" picker — plain datetime picker, no extra buttons
+  flatpickr('#date_from', fpOpts);
+
+  // "To" picker — with "Now" button inside the calendar popup
+  flatpickr('#date_to', Object.assign({}, fpOpts, {
+    onReady: function(selectedDates, dateStr, instance) {
+      var nowBtn = document.createElement('button');
+      nowBtn.type = 'button';
+      nowBtn.className = 'flatpickr-now-btn';
+      nowBtn.textContent = 'Now';
+      nowBtn.addEventListener('click', function() {
+        instance.setDate(new Date(), true);
+        instance.close();
+      });
+      instance.calendarContainer.appendChild(nowBtn);
+    }
+  }));
+})();
+</script>
 {% endblock %}

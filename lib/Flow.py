@@ -9,15 +9,17 @@ dynamically loads and invokes a module method.
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import build in pkgs
 import os
 import sys
 import json
+import time
 import importlib
 import traceback
+from datetime import datetime, timezone
 
 class Flow(object):
     """
@@ -265,9 +267,7 @@ class Flow(object):
         """
         Execute a workflow.
 
-        Each procedure is executed sequentially. The result of each procedure is
-        stored in the context under the procedures name and may be referenced
-        by subsequent procedures.
+        Loads the workflow definition and executes procedures sequentially.
 
         Args:
             flow_name (str): Workflow name
@@ -290,7 +290,37 @@ class Flow(object):
         self.logger.info({'flow_procedures': 'flow_procedures'})
         self.logger.info({'enabled': flow['enabled']})
         self.logger.info({'deleted': flow['deleted']})
-        for procedure in flow_procedures['procedures']:
+
+        procedures = flow_procedures.get('procedures', [])
+        variables = flow_procedures.get('variables', {})
+
+        ## pre-load workflow variables into context under reserved 'var' key
+        if variables:
+            context['var'] = variables
+
+        return self._exec_sequential(procedures, flow_name, context)
+
+    ## =========================================================
+    ##  Sequential Execution (legacy)
+    ## =========================================================
+
+    def _exec_sequential(self, procedures: list, flow_name: str, context: dict) -> bool:
+        """
+        Execute procedures sequentially (legacy mode).
+
+        Args:
+            procedures (list): Ordered list of procedure definitions
+            flow_name (str): Workflow name for logging
+            context (dict): Execution context
+
+        Returns:
+            bool: True on success
+        """
+
+        ## init step tracking
+        context['__steps__'] = []
+
+        for idx, procedure in enumerate(procedures):
             ## load args
             mod = procedure['mod']
             name = procedure['name']
@@ -303,6 +333,21 @@ class Flow(object):
             self.logger.info({'method': method})
             self.logger.info({'params': params})
 
+            ## step tracking
+            step_info = {
+                'name': name,
+                'order': idx,
+                'mod': mod,
+                'method': method,
+                'status': 'running',
+                'start_time': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
+                'end_time': None,
+                'duration_ms': None,
+                'result': None,
+                'error': None,
+            }
+            t0 = time.time()
+
             ## call func
             try:
                 module = importlib.import_module(mod)
@@ -310,15 +355,28 @@ class Flow(object):
                 cls = getattr(module, cls_name)
                 inst = cls(self.logger)
                 func = getattr(inst, method)
-    
+
                 params = self.resolve_params(params, context)
                 result = func(context, params)
                 context[name] = result
-    
+
                 self.logger.info({'result': result})
+
+                ## update step tracking
+                t1 = time.time()
+                step_info['status'] = 'success'
+                step_info['end_time'] = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                step_info['duration_ms'] = int((t1 - t0) * 1000)
+                step_info['result'] = result
 
             ## handling exceptions
             except Exception as e:
+                t1 = time.time()
+                step_info['status'] = 'failed'
+                step_info['end_time'] = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                step_info['duration_ms'] = int((t1 - t0) * 1000)
+                step_info['error'] = str(e)
+
                 self.logger.error(
                     {
                         "flow": flow_name,
@@ -331,6 +389,9 @@ class Flow(object):
                     },
                     exc_info = True
                 )
+                context['__steps__'].append(step_info)
                 raise
+
+            context['__steps__'].append(step_info)
 
         return True

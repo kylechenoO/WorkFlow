@@ -1,24 +1,58 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Workflows - WorkFlow{% endblock %}
 {% block page_title %}Workflow Management{% endblock %}
 
-{% block top_actions %}
-<a href="{% url 'workflows:flow_create' %}" class="btn btn-sm btn-primary">
-  <i class="bi bi-plus-lg"></i> Create Workflow
-</a>
+{% block top_actions %}{% endblock %}
+
+{% block extra_css %}
+<style>
+.run-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    text-decoration: none;
+}
+.run-status-badge.status-success { background: #198754; }
+.run-status-badge.status-failed  { background: #dc3545; }
+.run-status-badge.status-running { background: #0d6efd; }
+</style>
 {% endblock %}
 
 {% block content %}
+<!-- Search Bar -->
+<div class="mb-2">
+  <div class="d-flex align-items-center gap-2 flex-wrap w-100">
+    {% if perms_map.workflows.create %}
+    <a href="{% url 'workflows:flow_create' %}" class="btn btn-sm btn-primary flex-shrink-0">
+      <i class="bi bi-plus-lg"></i> Create Workflow
+    </a>
+    {% endif %}
+    <div class="input-group input-group-sm ms-auto" style="max-width:320px;">
+      <span class="input-group-text"><i class="bi bi-search"></i></span>
+      <input type="text" id="table-search" class="form-control" placeholder="Search workflows...">
+      <button class="btn btn-primary" type="button" id="table-search-btn">Search</button>
+    </div>
+  </div>
+</div>
+
 <div class="card">
   <div class="card-body p-0">
-    <table class="table table-hover mb-0">
+    <table class="table table-hover mb-0 sortable" id="data-table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Steps</th>
-          <th>Status</th>
-          <th>Updated</th>
+          <th data-sort="string">Name</th>
+          <th data-sort="number">Steps</th>
+          <th data-sort="string">Status</th>
+          <th data-sort="string">Last Run</th>
+          <th data-sort="string">Run Time</th>
+          <th data-sort="date">Updated</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -38,12 +72,44 @@
             <span class="badge badge-disabled">Disabled</span>
             {% endif %}
           </td>
+          <td>
+            {% if flow.last_run %}
+            <a href="{% url 'workflows:flow_run_detail' flow.flow_name flow.last_run.id %}" class="run-status-badge status-{{ flow.last_run.status }}">
+              {% if flow.last_run.status == 'success' %}<i class="bi bi-check-lg"></i>{% elif flow.last_run.status == 'failed' %}<i class="bi bi-x-lg"></i>{% elif flow.last_run.status == 'running' %}<i class="bi bi-arrow-repeat"></i>{% endif %}
+              {{ flow.last_run.status }}
+            </a>
+            {% else %}
+            <small class="text-muted">—</small>
+            {% endif %}
+          </td>
+          <td>
+            {% if flow.last_run %}
+            <small class="text-muted">{{ flow.last_run.start_time|timesince }} ago</small>
+            {% else %}
+            <small class="text-muted">—</small>
+            {% endif %}
+          </td>
           <td><small>{{ flow.updated_at|date:"Y-m-d H:i:s" }}</small></td>
           <td>
+            {% if perms_map.workflows.edit %}
             <a href="{% url 'workflows:flow_edit' flow.flow_name %}" class="btn btn-sm btn-outline-primary btn-action">
               <i class="bi bi-pencil"></i> Edit
             </a>
+            {% endif %}
 
+            {% if perms_map.workflows.run %}
+            <form method="post" action="{% url 'workflows:flow_run' flow.flow_name %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-info btn-action">
+                <i class="bi bi-play"></i> Run
+              </button>
+            </form>
+            <a href="{% url 'workflows:flow_run_history' flow.flow_name %}" class="btn btn-sm btn-outline-secondary btn-action">
+              <i class="bi bi-clock-history"></i> Runlog
+            </a>
+            {% endif %}
+
+            {% if perms_map.workflows.enable %}
             {% if flow.enabled %}
             <form method="post" action="{% url 'workflows:flow_disable' flow.flow_name %}" class="d-inline">
               {% csrf_token %}
@@ -55,59 +121,54 @@
               <button type="submit" class="btn btn-sm btn-outline-success btn-action">Enable</button>
             </form>
             {% endif %}
+            {% endif %}
 
-            <form method="post" action="{% url 'workflows:flow_run' flow.flow_name %}" class="d-inline">
+            {% if perms_map.workflows.delete %}
+            <form method="post" action="{% url 'workflows:flow_delete' flow.flow_name %}" class="d-inline"
+                  data-confirm-title="Delete Workflow"
+                  data-confirm-message="Delete workflow <strong>{{ flow.flow_name }}</strong>? This cannot be undone.">
               {% csrf_token %}
-              <button type="submit" class="btn btn-sm btn-outline-info btn-action"
-                      onclick="return confirm('Run workflow {{ flow.flow_name }}?');">
-                <i class="bi bi-play"></i> Run
+              <button type="button" class="btn btn-sm btn-outline-danger btn-action confirm-trigger">
+                <i class="bi bi-trash"></i> Delete
               </button>
             </form>
+            {% endif %}
 
-            <!-- Rename Modal Trigger -->
-            <button type="button" class="btn btn-sm btn-outline-secondary btn-action"
-                    data-bs-toggle="modal" data-bs-target="#renameModal-{{ flow.id }}">
-              Rename
-            </button>
-
-            <form method="post" action="{% url 'workflows:flow_delete' flow.flow_name %}" class="d-inline">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-sm btn-outline-danger btn-action"
-                      onclick="return confirm('Delete workflow {{ flow.flow_name }}?');">
-                <i class="bi bi-trash"></i>
-              </button>
-            </form>
-
-            <!-- Rename Modal -->
-            <div class="modal fade" id="renameModal-{{ flow.id }}" tabindex="-1">
-              <div class="modal-dialog modal-sm">
-                <div class="modal-content">
-                  <form method="post" action="{% url 'workflows:flow_rename' flow.flow_name %}">
-                    {% csrf_token %}
-                    <div class="modal-header">
-                      <h6 class="modal-title">Rename: {{ flow.flow_name }}</h6>
-                      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                      <input type="text" name="new_name" class="form-control" placeholder="New name" required>
-                    </div>
-                    <div class="modal-footer">
-                      <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                      <button type="submit" class="btn btn-sm btn-primary">Rename</button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            </div>
           </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="5" class="text-center text-muted py-3">No workflows found</td>
+          <td colspan="7" class="text-center text-muted py-3">No workflows found</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+
+{% include "_pagination.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/sortable_table.js' %}"></script>
+<script>
+(function() {
+  var input = document.getElementById('table-search');
+  if (!input) return;
+  var btn = document.getElementById('table-search-btn');
+  function doSearch() {
+    var term = input.value.toLowerCase();
+    var rows = document.querySelectorAll('#data-table tbody tr');
+    rows.forEach(function(row) {
+      var text = row.textContent.toLowerCase();
+      row.style.display = text.indexOf(term) !== -1 ? '' : 'none';
+    });
+  }
+  btn.addEventListener('click', doSearch);
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doSearch();
+  });
+
+})();
+</script>
 {% endblock %}

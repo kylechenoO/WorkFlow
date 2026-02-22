@@ -16,6 +16,25 @@
           {{ field }}
           <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
         </div>
+
+        {% elif field.name == 'groups' or field.name == 'roles' %}
+        <label class="form-label">{{ field.label }}</label>
+        {% if field.field.queryset.count == 0 %}
+        <div class="text-muted small">No {{ field.name }} available.</div>
+        {% else %}
+        <div class="border rounded p-2" style="max-height:150px;overflow-y:auto;background:#f8f9fa;">
+          {% for choice in field %}
+          <div class="form-check">
+            {{ choice.tag }}
+            <label class="form-check-label" for="{{ choice.id_for_label }}">{{ choice.choice_label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if field.help_text %}
+        <div class="form-text">{{ field.help_text }}</div>
+        {% endif %}
+
         {% else %}
         <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
         {{ field }}

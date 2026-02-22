@@ -83,38 +83,55 @@ class WorkflowAPIClient:
                 'error': str(e),
             }
 
-    def create_flow(self, name, procedures):
+    def create_flow(self, name, procedures, variables=None, connections=None, positions=None):
         """
         Create a new workflow.
 
         Args:
             name (str): Workflow name
             procedures (list): List of procedure step dicts
+            variables (dict): Optional workflow-level variables
 
         Returns:
             dict: API response
         """
 
-        return self._request('POST', '/flow', json_data={
+        payload = {
             'name': name,
             'procedures': procedures,
-        })
+        }
+        if variables:
+            payload['variables'] = variables
+        if connections is not None:
+            payload['_connections'] = connections
+        if positions is not None:
+            payload['_positions'] = positions
+        return self._request('POST', '/flow', json_data=payload)
 
-    def update_flow(self, name, procedures):
+    def update_flow(self, name, procedures, variables=None, connections=None, positions=None):
         """
         Update an existing workflow.
 
         Args:
             name (str): Workflow name
             procedures (list): Updated procedure step list
+            variables (dict): Optional workflow-level variables
+            connections (list): Optional visual editor connection list
 
         Returns:
             dict: API response
         """
 
-        return self._request('PUT', '/flow/%s' % name, json_data={
+        payload = {
             'procedures': procedures,
-        })
+        }
+        if variables:
+            payload['variables'] = variables
+        if connections is not None:
+            payload['_connections'] = connections
+        if positions is not None:
+            payload['_positions'] = positions
+        return self._request('PUT', '/flow/%s' % name, json_data=payload)
 
     def delete_flow(self, name):
         """
@@ -171,15 +188,46 @@ class WorkflowAPIClient:
             'new': new,
         })
 
-    def run_flow(self, name):
+    def run_flow(self, name, trigger_by=None):
         """
         Execute a workflow.
 
         Args:
             name (str): Workflow name
+            trigger_by (str): Optional — who triggered the run
 
         Returns:
-            dict: API response
+            dict: API response with run_id
         """
 
-        return self._request('POST', '/flow/%s/run' % name)
+        json_data = {}
+        if trigger_by:
+            json_data['trigger_by'] = trigger_by
+        return self._request('POST', '/flow/%s/run' % name, json_data=json_data)
+
+    def get_run_history(self, flow_name, limit=20):
+        """
+        Get run history for a workflow.
+
+        Args:
+            flow_name (str): Workflow name
+            limit (int): Maximum number of runs to return
+
+        Returns:
+            dict: API response with run history list
+        """
+
+        return self._request('GET', '/flow/%s/runs?limit=%d' % (flow_name, limit))
+
+    def get_run_detail(self, run_id):
+        """
+        Get run detail with per-step results.
+
+        Args:
+            run_id (int): Run history ID
+
+        Returns:
+            dict: API response with run detail and steps
+        """
+
+        return self._request('GET', '/run/%d' % run_id)

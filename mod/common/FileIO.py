@@ -6,15 +6,15 @@ engine for file read and write operations. The class methods are invoked
 dynamically by the Flow engine during workflow execution.
 
 Responsibilities:
-    - Read data from CSV, JSON, Excel, YAML files
-    - Write data to CSV, JSON, Excel, YAML files
+    - Read data from CSV, JSON, Excel, YAML, TXT files
+    - Write data to CSV, JSON, Excel, YAML, TXT files
     - Auto-detect file format from extension
-    - Return data as list of dicts for workflow context
+    - Return data as list of dicts (or raw string for txt) for workflow context
 """
 
 ## version related
 __author__ = "Kyle"
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import buildin pkgs
@@ -29,8 +29,8 @@ class FileIO(object):
     File read/write manager for workflow procedures.
 
     Responsibilities:
-        - Read files (CSV, JSON, Excel, YAML) into list of dicts
-        - Write list of dicts to files
+        - Read files (CSV, JSON, Excel, YAML, TXT) into list of dicts or raw string
+        - Write list of dicts or raw string to files
         - Auto-detect format from file extension
     """
 
@@ -53,7 +53,7 @@ class FileIO(object):
             explicit_format (str): Explicit format override or None
 
         Returns:
-            str: Detected format (csv, json, xlsx, yaml)
+            str: Detected format (csv, json, xlsx, yaml, txt)
         """
 
         if explicit_format:
@@ -70,6 +70,12 @@ class FileIO(object):
             '.xlsx': 'xlsx',
             '.yaml': 'yaml',
             '.yml': 'yaml',
+            '.txt': 'txt',
+            '.log': 'txt',
+            '.md': 'txt',
+            '.conf': 'txt',
+            '.ini': 'txt',
+            '.cfg': 'txt',
         }
 
         if ext in ext_map:
@@ -80,16 +86,16 @@ class FileIO(object):
     ## def read(self, file_path: str, format: str, encoding: str, sheet: str) -> dict:
     def read(self, context: dict, cfgs: dict) -> dict:
         """
-        Read a file and return data as a list of dicts.
+        Read a file and return data as a list of dicts (or raw string for txt).
 
         Args:
             file_path (str): Path to input file
-            format (str): Optional file format (csv, json, xlsx, yaml)
-            encoding (str): Optional file encoding, default utf-8
-            sheet (str): Optional Excel sheet name
+            format (str): Optional file format csv, json, xlsx, yaml, txt (default: auto-detect)
+            encoding (str): Optional file encoding (default: "utf-8")
+            sheet (str): Optional Excel sheet name (default: "")
 
         Returns:
-            dict: Read result with data list
+            dict: Read result with data list (or raw string for txt format)
         """
 
         ## load args
@@ -136,6 +142,16 @@ class FileIO(object):
                 if isinstance(data, dict):
                     data = [data]
 
+            ## read TXT (raw string)
+            elif fmt == 'txt':
+                with open(file_path, 'r', encoding=encoding) as f:
+                    content = f.read()
+                self.logger.info({'status': 'Successfully read %s chars from %s' % (len(content), file_path)})
+                return {
+                    'status': True,
+                    'data': content
+                }
+
             else:
                 self.logger.error({'status': 'Error: unsupported format %s' % (fmt)})
                 return {
@@ -160,14 +176,13 @@ class FileIO(object):
     ## def write(self, file_path: str, data: list, format: str, encoding: str, sheet: str) -> dict:
     def write(self, context: dict, cfgs: dict) -> dict:
         """
-        Write a list of dicts to a file.
+        Write data to a file (list of dicts, or raw string/list for txt).
 
         Args:
             file_path (str): Path to output file
-            data (list): List of dicts to write
-            format (str): Optional file format (csv, json, xlsx, yaml)
-            encoding (str): Optional file encoding, default utf-8
-            sheet (str): Optional Excel sheet name, default Sheet1
+            data (ref): Data to write (list of dicts for structured formats, string or list for txt)
+            format (str): Optional file format csv, json, xlsx, yaml, txt (default: auto-detect)
+            encoding (str): Optional file encoding (default: "utf-8")
 
         Returns:
             dict: Write result
@@ -217,6 +232,18 @@ class FileIO(object):
             elif fmt == 'yaml':
                 with open(file_path, 'w', encoding=encoding) as f:
                     yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+
+            ## write TXT (raw string or list)
+            elif fmt == 'txt':
+                with open(file_path, 'w', encoding=encoding) as f:
+                    if isinstance(data, list):
+                        f.write('\n'.join(str(item) for item in data))
+                    else:
+                        f.write(str(data))
+                self.logger.info({'status': 'Successfully wrote text content to %s' % (file_path)})
+                return {
+                    'status': True
+                }
 
             else:
                 self.logger.error({'status': 'Error: unsupported format %s' % (fmt)})

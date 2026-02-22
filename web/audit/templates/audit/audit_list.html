@@ -1,7 +1,68 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Audit Log - WorkFlow{% endblock %}
 {% block page_title %}Audit Log{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/flatpickr.min.css' %}">
+<style>
+.flatpickr-now-btn {
+  display: block;
+  width: 100%;
+  padding: 6px 0;
+  margin-top: 4px;
+  border: none;
+  border-top: 1px solid #e6e6e6;
+  background: transparent;
+  color: #0d6efd;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+.flatpickr-now-btn:hover { background: #f0f0f0; }
+
+.panel-btn {
+  background: none;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-size: 11px;
+  color: #6c757d;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.panel-btn:hover { background: #f8f9fa; color: #495057; }
+.panel-btn.active { border-color: #0d6efd; color: #0d6efd; }
+
+.panel-row td {
+  padding: 0 !important;
+  border-top: none !important;
+}
+.panel-content {
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+  padding: 12px 16px;
+  font-family: monospace;
+  font-size: 12px;
+}
+.panel-content pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #212529;
+  max-height: 320px;
+  overflow-y: auto;
+}
+/* JSON syntax highlight */
+.json-key  { color: #0550ae; }
+.json-str  { color: #116329; }
+.json-num  { color: #953800; }
+.json-bool { color: #8250df; }
+.json-null { color: #6e7781; }
+</style>
+{% endblock %}
 
 {% block content %}
 <!-- Filters -->
@@ -16,7 +77,7 @@
         {% endfor %}
       </select>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-1">
       <label class="form-label small">Action</label>
       <select name="action" class="form-select form-select-sm">
         <option value="">All Actions</option>
@@ -25,7 +86,7 @@
         {% endfor %}
       </select>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-1">
       <label class="form-label small">Target Type</label>
       <select name="target_type" class="form-select form-select-sm">
         <option value="">All Types</option>
@@ -36,16 +97,24 @@
     </div>
     <div class="col-md-2">
       <label class="form-label small">From</label>
-      <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filter_date_from }}">
+      <input type="text" name="date_from" id="date_from" class="form-control form-control-sm" placeholder="Select date/time" value="{{ filter_date_from }}">
     </div>
     <div class="col-md-2">
       <label class="form-label small">To</label>
-      <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filter_date_to }}">
+      <input type="text" name="date_to" id="date_to" class="form-control form-control-sm" placeholder="Select date/time" value="{{ filter_date_to }}">
     </div>
-    <div class="col-md-2">
-      <button type="submit" class="btn btn-sm btn-primary w-100">
-        <i class="bi bi-funnel"></i> Filter
-      </button>
+    <div class="col-md-3">
+      <label class="form-label small">Search</label>
+      <div class="d-flex gap-1">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input type="text" name="search" class="form-control" placeholder="Search..." value="{{ filter_search }}">
+          <button class="btn btn-primary" type="submit">Search</button>
+        </div>
+        <button type="button" id="export-xlsx-btn" class="btn btn-sm btn-outline-secondary flex-shrink-0">
+          <i class="bi bi-download"></i> Export
+        </button>
+      </div>
     </div>
   </form>
 </div>
@@ -53,34 +122,230 @@
 <!-- Audit Table -->
 <div class="card">
   <div class="card-body p-0">
-    <table class="table table-hover mb-0">
+    <table class="table table-hover mb-0 sortable" id="audit-table">
       <thead>
         <tr>
-          <th>Time</th>
-          <th>User</th>
-          <th>Action</th>
-          <th>Target Type</th>
-          <th>Target Name</th>
-          <th>IP</th>
+          <th style="width:16%" data-sort="date">Time</th>
+          <th style="width:9%"  data-sort="string">User</th>
+          <th style="width:9%"  data-sort="string">Action</th>
+          <th style="width:12%" data-sort="string">Target Type</th>
+          <th data-sort="string">Target Name</th>
+          <th style="width:11%" data-sort="string">IP</th>
+          <th style="width:7%">Request</th>
+          <th style="width:7%">Response</th>
         </tr>
       </thead>
       <tbody>
         {% for entry in entries %}
-        <tr>
+        {# store serialised detail as escaped JSON for safe JS parsing #}
+        <tr class="audit-main-row" data-id="{{ entry.id }}" data-detail="{{ entry.detail_json }}">
           <td><small>{{ entry.created_at|date:"Y-m-d H:i:s" }}</small></td>
           <td>{{ entry.user.username|default:"system" }}</td>
           <td><span class="badge bg-secondary">{{ entry.action }}</span></td>
           <td>{{ entry.target_type }}</td>
           <td>{{ entry.target_name }}</td>
           <td><small class="text-muted">{{ entry.ip_address|default:"-" }}</small></td>
+          <td>
+            <button class="panel-btn" id="req-btn-{{ entry.id }}"
+                    onclick="togglePanel({{ entry.id }}, 'req', this)">
+              <i class="bi bi-chevron-right"></i> view
+            </button>
+          </td>
+          <td>
+            <button class="panel-btn" id="resp-btn-{{ entry.id }}"
+                    onclick="togglePanel({{ entry.id }}, 'resp', this)">
+              <i class="bi bi-chevron-right"></i> view
+            </button>
+          </td>
+        </tr>
+        <tr class="panel-row" id="req-row-{{ entry.id }}" style="display:none;">
+          <td colspan="8">
+            <div class="panel-content">
+              <pre id="req-pre-{{ entry.id }}"></pre>
+            </div>
+          </td>
+        </tr>
+        <tr class="panel-row" id="resp-row-{{ entry.id }}" style="display:none;">
+          <td colspan="8">
+            <div class="panel-content">
+              <pre id="resp-pre-{{ entry.id }}"></pre>
+            </div>
+          </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="6" class="text-center text-muted py-3">No audit entries found</td>
+          <td colspan="8" class="text-center text-muted py-3">No audit entries found</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+{% include "_pagination.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="{% static 'js/sortable_table.js' %}"></script>
+<script src="{% static 'js/flatpickr.min.js' %}"></script>
+<script>
+document.getElementById('export-xlsx-btn').addEventListener('click', function() {
+  var table = document.querySelector('table');
+  var clone = table.cloneNode(true);
+  clone.querySelectorAll('tr').forEach(function(tr) {
+    if (tr.classList.contains('panel-row') || tr.style.display === 'none') tr.remove();
+  });
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.table_to_sheet(clone);
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  XLSX.writeFile(wb, 'auditlog.xlsx');
+});
+</script>
+<script>
+(function() {
+  var fpOpts = {
+    enableTime: true,
+    dateFormat: 'Y-m-d H:i',
+    time_24hr: true,
+    allowInput: true
+  };
+  flatpickr('#date_from', fpOpts);
+  flatpickr('#date_to', Object.assign({}, fpOpts, {
+    onReady: function(selectedDates, dateStr, instance) {
+      var nowBtn = document.createElement('button');
+      nowBtn.type = 'button';
+      nowBtn.className = 'flatpickr-now-btn';
+      nowBtn.textContent = 'Now';
+      nowBtn.addEventListener('click', function() {
+        instance.setDate(new Date(), true);
+        instance.close();
+      });
+      instance.calendarContainer.appendChild(nowBtn);
+    }
+  }));
+})();
+
+/* ── JSON helpers ─────────────────────────────────────────── */
+var SCRUB_KEYS = ['csrfmiddlewaretoken', 'password', 'token', 'secret', 'key', 'api_key'];
+
+function pyReprToJson(raw) {
+  /* Django renders Python dict as repr — convert to valid JSON */
+  return raw
+    .replace(/'/g, '"')
+    .replace(/\bTrue\b/g, 'true')
+    .replace(/\bFalse\b/g, 'false')
+    .replace(/\bNone\b/g, 'null');
+}
+
+function scrub(obj) {
+  if (typeof obj !== 'object' || obj === null) return obj;
+  if (Array.isArray(obj)) return obj.map(scrub);
+  var out = {};
+  Object.keys(obj).forEach(function(k) {
+    if (SCRUB_KEYS.indexOf(k.toLowerCase()) !== -1) return;
+    out[k] = scrub(obj[k]);
+  });
+  return out;
+}
+
+function highlight(obj) {
+  var json = JSON.stringify(obj, null, 2);
+  return json.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+    function(m) {
+      var cls = 'json-num';
+      if (/^"/.test(m))        cls = /:$/.test(m) ? 'json-key' : 'json-str';
+      else if (/true|false/.test(m)) cls = 'json-bool';
+      else if (/null/.test(m)) cls = 'json-null';
+      return '<span class="' + cls + '">' + m + '</span>';
+    }
+  );
+}
+
+/* Parse legacy flat detail (old middleware format) into request sub-object */
+function normaliseLegacy(obj) {
+  /* Handle string detail (e.g. "Changed timezone from UTC to Asia/Tokyo") */
+  if (typeof obj === 'string') return { request: { message: obj } };
+  /* Already has the new structure */
+  if (obj.request || obj.response) return obj;
+  /* Partial dict without method/path (e.g. {field:'password'}, {restored_version:3}) */
+  if (!obj.method && !obj.path) return { request: { body: obj } };
+  /* Old middleware format: {method, path, status_code, body_preview/body} */
+  var req = { method: obj.method, path: obj.path, headers: {}, body: {} };
+  if (obj.status_code) req.status_code = obj.status_code;
+  if (obj.body)        req.body = obj.body;
+  if (obj.body_preview) {
+    /* decode legacy URL-encoded body_preview */
+    try {
+      var params = {};
+      obj.body_preview.split('&').forEach(function(pair) {
+        var parts = pair.split('=');
+        var pk = decodeURIComponent(parts[0] || '');
+        var pv = decodeURIComponent((parts[1] || '').replace(/\+/g, ' '));
+        if (pk && SCRUB_KEYS.indexOf(pk.toLowerCase()) === -1) params[pk] = pv;
+      });
+      if (Object.keys(params).length) req.body = params;
+    } catch(e) {}
+  }
+  /* Remove keys already moved */
+  ['method','path','status_code','body','body_preview'].forEach(function(k) { delete obj[k]; });
+  /* Any remaining keys go to body */
+  Object.keys(obj).forEach(function(k) { req.body[k] = obj[k]; });
+  return { request: req };
+}
+
+/* Parse and cache detail objects per entry id */
+var _cache = {};
+function getDetail(id) {
+  if (_cache[id] !== undefined) return _cache[id];
+  var row = document.querySelector('[data-id="' + id + '"]');
+  if (!row) return (_cache[id] = null);
+  try {
+    var raw = row.getAttribute('data-detail') || '';
+    if (!raw || raw === 'null' || raw === 'None') return (_cache[id] = null);
+    var obj = JSON.parse(raw);
+    if (obj === null || obj === undefined) return (_cache[id] = null);
+    obj = normaliseLegacy(scrub(typeof obj === 'object' ? obj : obj));
+    _cache[id] = obj;
+  } catch(e) {
+    /* fallback: try pyReprToJson for any legacy entries */
+    try {
+      var obj2 = JSON.parse(pyReprToJson(raw));
+      obj2 = normaliseLegacy(scrub(typeof obj2 === 'object' ? obj2 : obj2));
+      _cache[id] = obj2;
+    } catch(e2) {
+      _cache[id] = null;
+    }
+  }
+  return _cache[id];
+}
+
+/* Populate a pre element lazily on first open */
+function populatePre(preEl, data) {
+  if (preEl.dataset.rendered) return;
+  preEl.innerHTML = data ? highlight(data) : '<span class="text-muted">No data</span>';
+  preEl.dataset.rendered = '1';
+}
+
+function togglePanel(id, type, btn) {
+  var rowId  = type + '-row-' + id;
+  var preId  = type + '-pre-' + id;
+  var row    = document.getElementById(rowId);
+  var preEl  = document.getElementById(preId);
+  var detail = getDetail(id);
+
+  if (row.style.display === 'none') {
+    /* populate on first open */
+    var data = detail ? (type === 'req' ? detail.request : detail.response) : null;
+    populatePre(preEl, data);
+    row.style.display = '';
+    btn.classList.add('active');
+    btn.querySelector('i').className = 'bi bi-chevron-down';
+  } else {
+    row.style.display = 'none';
+    btn.classList.remove('active');
+    btn.querySelector('i').className = 'bi bi-chevron-right';
+  }
+}
+</script>
 {% endblock %}

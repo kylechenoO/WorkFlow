@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Version {{ version.version }} — {{ category }}.{{ module_name }} - WorkFlow{% endblock %}
+{% block page_title %}Version {{ version.version }} — {{ category }}.{{ module_name }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+{% endblock %}
+
+{% block top_actions %}
+<a href="{% url 'modules:module_versions' category module_name %}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-arrow-left"></i> Back to History
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>
+      <strong>v{{ version.version }}</strong>
+      <span class="text-muted ms-2">{{ version.created_at|date:"Y-m-d H:i:s" }}</span>
+      <span class="text-muted ms-2">by {{ version.changed_by|default:"—" }}</span>
+    </span>
+    {% if perms_map.modules.edit %}
+    <form method="post" action="{% url 'modules:module_version_restore' category module_name version.id %}" class="d-inline"
+          data-confirm-title="Restore Version"
+          data-confirm-message="Restore to version <strong>v{{ version.version }}</strong>? Current state will be saved as a new version first.">
+      {% csrf_token %}
+      <button type="button" class="btn btn-sm btn-outline-warning confirm-trigger">
+        <i class="bi bi-arrow-counterclockwise"></i> Restore This Version
+      </button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="card-body p-0">
+    <textarea id="version-code" style="display:none;">{{ content }}</textarea>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+<script>
+(function() {
+  var textarea = document.getElementById('version-code');
+  if (!textarea) return;
+  var cm = CodeMirror.fromTextArea(textarea, {
+    mode: 'python',
+    lineNumbers: true,
+    readOnly: true,
+    theme: 'default'
+  });
+  cm.setSize(null, '70vh');
+})();
+</script>
+{% endblock %}
