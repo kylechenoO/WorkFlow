@@ -6,7 +6,7 @@
 
 {% block extra_css %}
 <!-- CodeMirror CSS -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="{% static 'vendor/codemirror/codemirror.min.css' %}">
 <link rel="stylesheet" href="{% static 'css/module_editor.css' %}">
 {% endblock %}
 
@@ -88,10 +88,10 @@
 
 {% block extra_js %}
 <!-- CodeMirror JS -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
+<script src="{% static 'vendor/codemirror/codemirror.min.js' %}"></script>
+<script src="{% static 'vendor/codemirror/mode/python.min.js' %}"></script>
+<script src="{% static 'vendor/codemirror/addon/edit/matchbrackets.min.js' %}"></script>
+<script src="{% static 'vendor/codemirror/addon/edit/closebrackets.min.js' %}"></script>
 <script>
 var _editorCM = null;
 

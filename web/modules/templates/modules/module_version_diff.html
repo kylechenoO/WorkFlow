@@ -11,7 +11,7 @@
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/css/diff2html.min.css">
+<link rel="stylesheet" href="{% static 'vendor/diff2html/diff2html.min.css' %}">
 <style>
 .d2h-wrapper { font-size: 13px; }
 .diff-header { display: flex; gap: 20px; align-items: center; margin-bottom: 12px; }
@@ -36,8 +36,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/js/diff2html.min.js"></script>
+<script src="{% static 'vendor/diff/diff.min.js' %}"></script>
+<script src="{% static 'vendor/diff2html/diff2html.min.js' %}"></script>
 <script>
 (function() {
   var oldText = document.getElementById('diff-old').value;

@@ -30,10 +30,10 @@
 
 {% block extra_css %}
 <!-- CodeMirror CSS -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldgutter.min.css">
+<link rel="stylesheet" href="{% static 'vendor/codemirror/codemirror.min.css' %}">
+<link rel="stylesheet" href="{% static 'vendor/codemirror/addon/fold/foldgutter.min.css' %}">
 <!-- Drawflow CSS -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.59/dist/drawflow.min.css">
+<link rel="stylesheet" href="{% static 'vendor/drawflow/drawflow.min.css' %}">
 <!-- Visual Editor CSS -->
 <link rel="stylesheet" href="{% static 'css/visual_editor.css' %}?v=4">
 {% endblock %}
@@ -115,16 +115,16 @@
 
 {% block extra_js %}
 <!-- CodeMirror JS -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/javascript/javascript.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldgutter.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/brace-fold.min.js"></script>
+<script src="{% static 'vendor/codemirror/codemirror.min.js' %}"></script>
+<script src="{% static 'vendor/codemirror/mode/javascript.min.js' %}"></script>
+<script src="{% static 'vendor/codemirror/addon/edit/matchbrackets.min.js' %}"></script>
+<script src="{% static 'vendor/codemirror/addon/edit/closebrackets.min.js' %}"></script>
+<script src="{% static 'vendor/codemirror/addon/fold/foldcode.min.js' %}"></script>
+<script src="{% static 'vendor/codemirror/addon/fold/foldgutter.min.js' %}"></script>
+<script src="{% static 'vendor/codemirror/addon/fold/brace-fold.min.js' %}"></script>
 
 <!-- Drawflow JS -->
-<script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.59/dist/drawflow.min.js"></script>
+<script src="{% static 'vendor/drawflow/drawflow.min.js' %}"></script>
 
 <!-- Flow Editor JS -->
 <script src="{% static 'js/module_registry.js' %}?v=4"></script>

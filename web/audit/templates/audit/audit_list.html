@@ -185,7 +185,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="{% static 'vendor/xlsx/xlsx.full.min.js' %}"></script>
 <script src="{% static 'js/sortable_table.js' %}"></script>
 <script src="{% static 'js/flatpickr.min.js' %}"></script>
 <script>

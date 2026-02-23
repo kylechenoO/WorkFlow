@@ -5,7 +5,7 @@
 {% block page_title %}Version {{ version.version }} — {{ category }}.{{ module_name }}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="{% static 'vendor/codemirror/codemirror.min.css' %}">
 {% endblock %}
 
 {% block top_actions %}
@@ -40,8 +40,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+<script src="{% static 'vendor/codemirror/codemirror.min.js' %}"></script>
+<script src="{% static 'vendor/codemirror/mode/python.min.js' %}"></script>
 <script>
 (function() {
   var textarea = document.getElementById('version-code');
