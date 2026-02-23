@@ -6,3 +6,4 @@ rm -rvf ${PROJ_PATH}/bin/{activate,activate.csh,activate.fish,Activate.ps1,f2py,
 rm -rvf ${PROJ_PATH}/lib/python3.12
 rm -rvf ${PROJ_PATH}/lib64
 rm -rvf ${PROJ_PATH}/{pyvenv.cfg,gunicorn.ctl}
+rm -rvf ${PROJ_PATH}/etc/{ssh,ssl}
