@@ -66,6 +66,9 @@ A Python-based **workflow automation platform** built on JSON-defined flows, dyn
 ### Workflow Editor — Visual Mode
 ![Workflow Editor Visual](screenshots/workflow_editor_visual.png)
 
+### Workflow Editor — Form Mode
+![Workflow Editor Form](screenshots/workflow_editor_form.png)
+
 ### Workflow Editor — JSON Mode
 ![Workflow Editor JSON](screenshots/workflow_editor_json.png)
 
@@ -850,7 +853,7 @@ Auto-failover to the next node on connection error. Returns `{"status": True, "c
 
 | Method | Key Params | Description |
 |--------|-----------|-------------|
-| `cluster_connect` | `nodes` (list of {host, port, username, password, database, TLS options}), `retry_on_error` | Connect to first available node |
+| `cluster_connect` | `hosts` (list of {host, port, username, password, database, TLS options}), `retry_on_error`, `timeout` (ms, default 5000), `retry_count` (default 3), `retry_delay` (sec, default 1.0) | Connect to first available node with configurable timeout and retry |
 | `cluster_disconnect` | — | Close connection |
 | `cluster_find` | `collection`, `query`, `projection`, `sort`, `limit` | Query documents (delegated) |
 | `cluster_findOne` | `collection`, `query`, `projection` | Get single document (delegated) |
@@ -899,7 +902,7 @@ Stores MySQLBase instance in context (`__mysqlcluster_mysql__`). Returns `{"stat
 
 | Method | Key Params | Description |
 |--------|-----------|-------------|
-| `cluster_connect` | `nodes` (list of {host, port, username, password, database}), `retry_on_error` | Connect to first available node |
+| `cluster_connect` | `hosts` (list of {host, port, username, password, database}), `retry_on_error`, `timeout` (ms, default 5000), `retry_count` (default 3), `retry_delay` (sec, default 1.0) | Connect to first available node with configurable timeout and retry |
 | `cluster_disconnect` | — | Close connection |
 | `cluster_query` | `sql`, `params` | Parameterized SELECT (delegated) |
 | `cluster_insert` | `table`, `data` | Insert records (delegated) |
@@ -1036,12 +1039,12 @@ WorkFlow is designed as an **internal tool** deployed behind a firewall. The fol
 
 ## Testing
 
-All features have been tested across **303 test cases** covering authentication, workflows, modules, run logs, system admin, REST API, and browser UI.
+All features have been tested across **309 test cases** covering authentication, workflows, modules, run logs, system admin, REST API, and browser UI.
 
 | Metric | Count |
 |--------|-------|
-| **Total** | 303 |
-| **Pass** | 297 |
+| **Total** | 309 |
+| **Pass** | 303 |
 | **Fail** | 0 |
 | **Skip** | 6 |
 
@@ -1077,7 +1080,7 @@ The full test report with detailed steps, expected results, and screenshots is a
 - **Triple-mode workflow editor** — Visual (drag-and-drop canvas), Form, and JSON editing modes with bidirectional sync
 - **Module editor** — write and edit Python procedure modules directly in the browser with syntax highlighting
 - **Version control** — every workflow and module edit is versioned with diff and restore support
-- **Cluster failover** — multi-node failover with automatic node failover built into MySQL and MongoDB modules
+- **Cluster failover** — multi-node failover with configurable timeout, retry count, and retry delay built into MySQL and MongoDB modules
 - **Kafka module** — producer/consumer operations with SASL/SSL support (`kafkaclient.Kafka`)
 - **MongoDB module** — full CRUD, aggregation, TLS support (`mongodb.MongoDB`)
 - **Bash module** — execute shell commands with timeout and environment variable support
@@ -1094,7 +1097,7 @@ The full test report with detailed steps, expected results, and screenshots is a
 - Service management via unified `bin/service.sh` (start/stop/restart/status for backend and frontend)
 - Port configuration auto-sync between `global.json` and `service.conf` via the web UI
 - Password verification modal for sensitive system operations
-- Comprehensive test suite: **303 test cases** (297 pass, 0 fail, 6 skip)
+- Comprehensive test suite: **309 test cases** (303 pass, 0 fail, 6 skip)
 
 **Security**
 - Passwords masked in debug logs
