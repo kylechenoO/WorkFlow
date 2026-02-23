@@ -196,6 +196,9 @@ CREATE TABLE IF NOT EXISTS wf_version (
     KEY idx_vr_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+## seed sys_variables permission (idempotent via IGNORE)
+INSERT IGNORE INTO wf_permission (page, action) VALUES ('sys_variables', 'use');
+
 CREATE TABLE IF NOT EXISTS wf_reqlog (
     id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     created_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

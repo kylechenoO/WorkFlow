@@ -944,6 +944,180 @@ def _list_ca_certs() -> list:
     return certs
 
 
+## =============================================================
+## SSH Key Management
+## =============================================================
+
+_SSH_DIR = str(settings.PROJ_PATH / 'etc' / 'ssh')
+_SSH_DEFAULT_KEY = str(settings.PROJ_PATH / 'etc' / 'ssh' / 'default.key')
+
+
+def _parse_ssh_key_info(path: str) -> dict:
+    """
+    Parse SSH private key metadata: type, bits, and fingerprint.
+
+    Args:
+        path (str): Path to a private key file
+
+    Returns:
+        dict: { 'type': str, 'bits': int, 'fingerprint': str }
+              or None on failure
+    """
+
+    try:
+        import paramiko
+        import hashlib as _hl
+        import base64
+
+        ## try loading as different key types
+        key = None
+        key_type = 'Unknown'
+        for cls, name in [
+            (paramiko.RSAKey, 'RSA'),
+            (paramiko.Ed25519Key, 'Ed25519'),
+            (paramiko.ECDSAKey, 'ECDSA'),
+            (paramiko.DSSKey, 'DSS'),
+        ]:
+            try:
+                key = cls.from_private_key_file(path)
+                key_type = name
+                break
+            except Exception:
+                continue
+
+        if key is None:
+            return None
+
+        ## compute fingerprint
+        key_bytes = key.asbytes()
+        digest = _hl.sha256(key_bytes).digest()
+        fp = base64.b64encode(digest).decode('ascii').rstrip('=')
+
+        return {
+            'type': key_type,
+            'bits': key.get_bits(),
+            'fingerprint': 'SHA256:%s' % fp,
+        }
+    except Exception:
+        return None
+
+
+@require_permission('system', 'edit')
+@require_POST
+def ssh_key_upload(request):
+    """
+    Upload a default SSH private key.
+
+    Validates the key using paramiko, stores to etc/ssh/default.key
+    with mode 0o600, and saves the path in SystemSetting.
+    """
+
+    key_file = request.FILES.get('ssh_key_file')
+    if not key_file:
+        return JsonResponse({'status': False, 'error': 'No key file provided.'})
+
+    try:
+        import paramiko
+        import tempfile
+
+        ## write to temp file for validation
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.key')
+        try:
+            for chunk in key_file.chunks():
+                tmp.write(chunk)
+            tmp.close()
+
+            ## validate by trying to load as SSH key
+            key = None
+            for cls in [paramiko.RSAKey, paramiko.Ed25519Key, paramiko.ECDSAKey, paramiko.DSSKey]:
+                try:
+                    key = cls.from_private_key_file(tmp.name)
+                    break
+                except Exception:
+                    continue
+
+            if key is None:
+                return JsonResponse({'status': False, 'error': 'Invalid SSH private key file.'})
+
+            ## read validated key data
+            with open(tmp.name, 'rb') as f:
+                key_data = f.read()
+        finally:
+            os.unlink(tmp.name)
+
+        ## ensure ssh dir exists
+        os.makedirs(_SSH_DIR, exist_ok=True)
+
+        ## write key with mode 0o600 (owner-only)
+        fd = os.open(_SSH_DEFAULT_KEY, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(key_data)
+
+        SystemSetting.set('ssh_default_key_path', _SSH_DEFAULT_KEY)
+
+        ## audit log
+        try:
+            from audit.models import AuditLog
+            AuditLog.log(
+                user=request.user,
+                action='update',
+                target_type='ssh_key',
+                target_name='default',
+                detail='Uploaded default SSH key: %s' % key_file.name,
+                ip_address=request.META.get('REMOTE_ADDR'),
+            )
+        except Exception:
+            pass
+
+        key_info = _parse_ssh_key_info(_SSH_DEFAULT_KEY)
+        return JsonResponse({'status': True, 'key_info': key_info})
+
+    ## error handling
+    except Exception as e:
+        return JsonResponse({'status': False, 'error': 'Failed to upload SSH key: %s' % str(e)})
+
+
+@require_permission('system', 'edit')
+@require_POST
+def ssh_key_delete(request):
+    """
+    Delete the default SSH private key.
+
+    Removes the key file from disk and clears the SystemSetting.
+    """
+
+    try:
+        ## remove key file
+        if os.path.isfile(_SSH_DEFAULT_KEY):
+            os.remove(_SSH_DEFAULT_KEY)
+
+        ## clear setting
+        try:
+            SystemSetting.objects.filter(key='ssh_default_key_path').delete()
+        except Exception:
+            pass
+
+        ## audit log
+        try:
+            from audit.models import AuditLog
+            AuditLog.log(
+                user=request.user,
+                action='delete',
+                target_type='ssh_key',
+                target_name='default',
+                detail='Deleted default SSH key',
+                ip_address=request.META.get('REMOTE_ADDR'),
+            )
+        except Exception:
+            pass
+
+        return JsonResponse({'status': True})
+
+    ## error handling
+    except Exception as e:
+        return JsonResponse({'status': False, 'error': 'Failed to delete SSH key: %s' % str(e)})
+
+
 @require_permission('system', 'edit')
 def ssl_view(request):
     """
@@ -1533,10 +1707,17 @@ def services_view(request):
     ## read global.json for display
     global_json = _read_global_json_flat()
 
+    ## SSH key info
+    ssh_key_exists = os.path.isfile(_SSH_DEFAULT_KEY)
+    ssh_key_info = _parse_ssh_key_info(_SSH_DEFAULT_KEY) if ssh_key_exists else None
+
     return render(request, 'system/services.html', {
         'nav_active': 'system',
         'services': services,
         'global_json': global_json,
+        'ssh_key_exists': ssh_key_exists,
+        'ssh_key_info': ssh_key_info,
+        'ssh_key_path': _SSH_DEFAULT_KEY,
     })
 
 

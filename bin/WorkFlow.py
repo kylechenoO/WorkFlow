@@ -277,6 +277,8 @@ class WorkFlow(object):
 
         ## exec specify flow
         context = {}
+        if trigger_by:
+            context['__trigger_by__'] = trigger_by
         flow_error = None
         try:
             result = self.FlowObj.execFlow(flow_name, context)

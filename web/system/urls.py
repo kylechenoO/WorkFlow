@@ -41,5 +41,8 @@ urlpatterns = [
     path('services/<str:svc>/logs/',     views.service_logs,          name='service_logs'),
     path('services/<str:svc>/config/update/', views.service_config_update, name='service_config_update'),
 
+    path('services/ssh-key/upload/', views.ssh_key_upload, name='ssh_key_upload'),
+    path('services/ssh-key/delete/', views.ssh_key_delete, name='ssh_key_delete'),
+
     path('verify-password/',  views.verify_password,  name='verify_password'),
 ]
