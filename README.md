@@ -34,8 +34,8 @@ A Python-based **workflow automation platform** built on JSON-defined flows, dyn
 
 - **JSON-defined workflows** — declare procedures, parameters, and data flow in plain JSON
 - **Triple-mode workflow editor** — Form, Visual (drag-and-drop canvas), and JSON modes with bidirectional sync
-- **16 built-in modules** — Bash, HTTP, SSH, File I/O, MySQL, MongoDB, Kafka, Elasticsearch, Prometheus, Notify, Filter, MultiProcess, and more
-- **Cluster failover modules** — MySQLCluster and MongoDBCluster with automatic node failover
+- **14 built-in modules** — Bash, HTTP, SSH, File I/O, MySQL, MongoDB, Kafka, Elasticsearch, Prometheus, Notify, Filter, MultiProcess, and more
+- **Cluster failover** — multi-node failover built into MySQL and MongoDB modules (`cluster_connect`, `cluster_query`, etc.)
 - **Custom module editor** — write Python procedure modules directly in the browser with version history
 - **Run history & step viewer** — per-run execution timeline with step-level timing, results, and errors
 - **Version control** — every workflow and module edit is versioned; diff and restore at any point
@@ -200,10 +200,6 @@ WorkFlow/
 │   │   └── MySQL.py             # MySQL CRUD operations
 │   ├── mongodb/
 │   │   └── MongoDB.py           # MongoDB CRUD + TLS support
-│   ├── mysqlcluster/
-│   │   └── MySQLCluster.py      # MySQL cluster with failover
-│   ├── mongodbcluster/
-│   │   └── MongoDBCluster.py    # MongoDB cluster with failover
 │   ├── kafkaclient/
 │   │   └── Kafka.py             # Kafka producer/consumer
 │   ├── elasticsearchclient/
@@ -848,6 +844,22 @@ Connection is stored in context (`__mongodb_con__`, `__mongodb_db__`) to persist
 
 TLS supports cert from local file path, URL, or base64-encoded content.
 
+#### Cluster Methods
+
+Auto-failover to the next node on connection error. Returns `{"status": True, "connected_node": "host:port"}` on connect.
+
+| Method | Key Params | Description |
+|--------|-----------|-------------|
+| `cluster_connect` | `nodes` (list of {host, port, username, password, database, TLS options}), `retry_on_error` | Connect to first available node |
+| `cluster_disconnect` | — | Close connection |
+| `cluster_find` | `collection`, `query`, `projection`, `sort`, `limit` | Query documents (delegated) |
+| `cluster_findOne` | `collection`, `query`, `projection` | Get single document (delegated) |
+| `cluster_insert` | `collection`, `data` | Insert documents (delegated) |
+| `cluster_update` | `collection`, `query`, `data`, `upsert` | Update documents (delegated) |
+| `cluster_delete` | `collection`, `query` | Delete documents (delegated) |
+| `cluster_count` | `collection`, `query` | Count documents (delegated) |
+| `cluster_aggregate` | `collection`, `pipeline` | Aggregation pipeline (delegated) |
+
 ---
 
 ### `kafkaclient.Kafka` — Kafka Producer/Consumer
@@ -867,42 +879,6 @@ Supports PLAINTEXT, SSL, SASL_PLAINTEXT, and SASL_SSL security protocols.
 
 ---
 
-### `mysqlcluster.MySQLCluster` — MySQL Cluster Failover
-
-Stores MySQLBase instance in context (`__mysqlcluster_mysql__`). Delegates operations to `mysql.MySQL`.
-
-| Method | Key Params | Description |
-|--------|-----------|-------------|
-| `connect` | `nodes` (list of {host, port, username, password, database}), `retry_on_error` | Connect to first available node |
-| `disconnect` | — | Close connection |
-| `query` | `sql`, `params` | Parameterized SELECT (delegated) |
-| `insert` | `table`, `data` | Insert records (delegated) |
-| `update` | `table`, `where`, `data` | Update records (delegated) |
-| `insertWithUK` | `table`, `data`, `update_cols`, `key_cols` | Upsert on duplicate key (delegated) |
-
-Returns `{"status": True, "connected_node": "host:port"}` on connect.
-
----
-
-### `mongodbcluster.MongoDBCluster` — MongoDB Cluster Failover
-
-Delegates all operations to `mongodb.MongoDB`. Auto-failover to next node on connection error.
-
-| Method | Key Params | Description |
-|--------|-----------|-------------|
-| `connect` | `nodes` (list of {host, port, username, password, database, TLS options}), `retry_on_error` | Connect to first available node |
-| `disconnect` | — | Close connection |
-| `find` | `collection`, `query`, `projection`, `sort`, `limit` | Query documents (delegated) |
-| `insert` | `collection`, `data` | Insert documents (delegated) |
-| `update` | `collection`, `query`, `data`, `upsert` | Update documents (delegated) |
-| `delete` | `collection`, `query` | Delete documents (delegated) |
-| `count` | `collection`, `query` | Count documents (delegated) |
-| `aggregate` | `collection`, `pipeline` | Aggregation pipeline (delegated) |
-
-Returns `{"status": True, "connected_node": "host:port"}` on connect.
-
----
-
 ### `mysql.MySQL` — MySQL Operations
 
 | Method | Key Params | Description |
@@ -916,6 +892,19 @@ Returns `{"status": True, "connected_node": "host:port"}` on connect.
 | `execute` | `sql` | Execute arbitrary SQL |
 | `showDatabases` | — | List databases |
 | `showTables` | — | List tables |
+
+#### Cluster Methods
+
+Stores MySQLBase instance in context (`__mysqlcluster_mysql__`). Returns `{"status": True, "connected_node": "host:port"}` on connect.
+
+| Method | Key Params | Description |
+|--------|-----------|-------------|
+| `cluster_connect` | `nodes` (list of {host, port, username, password, database}), `retry_on_error` | Connect to first available node |
+| `cluster_disconnect` | — | Close connection |
+| `cluster_query` | `sql`, `params` | Parameterized SELECT (delegated) |
+| `cluster_insert` | `table`, `data` | Insert records (delegated) |
+| `cluster_update` | `table`, `where`, `data` | Update records (delegated) |
+| `cluster_insertWithUK` | `table`, `data`, `update_cols`, `key_cols` | Upsert on duplicate key (delegated) |
 
 ---
 
@@ -1088,7 +1077,7 @@ The full test report with detailed steps, expected results, and screenshots is a
 - **Triple-mode workflow editor** — Visual (drag-and-drop canvas), Form, and JSON editing modes with bidirectional sync
 - **Module editor** — write and edit Python procedure modules directly in the browser with syntax highlighting
 - **Version control** — every workflow and module edit is versioned with diff and restore support
-- **Cluster failover modules** — MySQLCluster and MongoDBCluster with automatic node failover
+- **Cluster failover** — multi-node failover with automatic node failover built into MySQL and MongoDB modules
 - **Kafka module** — producer/consumer operations with SASL/SSL support (`kafkaclient.Kafka`)
 - **MongoDB module** — full CRUD, aggregation, TLS support (`mongodb.MongoDB`)
 - **Bash module** — execute shell commands with timeout and environment variable support
@@ -1101,7 +1090,7 @@ The full test report with detailed steps, expected results, and screenshots is a
 - **Role-based access control** — granular page + action permissions via Groups and Roles
 
 **Improvements**
-- Expanded to **16 built-in modules** (Bash, HTTP, SSH, FileIO, MySQL, MongoDB, Kafka, Elasticsearch, Prometheus, Notify, Filter, DataTransformer, Kt, MultiProcess, MySQLCluster, MongoDBCluster)
+- Expanded to **14 built-in modules** (Bash, HTTP, SSH, FileIO, MySQL, MongoDB, Kafka, Elasticsearch, Prometheus, Notify, Filter, DataTransformer, Kt, MultiProcess)
 - Service management via unified `bin/service.sh` (start/stop/restart/status for backend and frontend)
 - Port configuration auto-sync between `global.json` and `service.conf` via the web UI
 - Password verification modal for sensitive system operations

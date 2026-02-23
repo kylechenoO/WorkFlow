@@ -20,7 +20,7 @@ __email__ = "kyle@hacking-linux.com"
 ## import buildin pkgs
 import pymysql
 import pandas as pd
-from pymysql import Error
+from pymysql import Error, OperationalError, InterfaceError
 from logging import Logger
 
 ## import private pkgs
@@ -40,6 +40,11 @@ class MySQL(object):
     ## context keys
     _CTX_CON = '__mysql_con__'
     _CTX_CUR = '__mysql_cur__'
+
+    ## cluster context keys
+    _CTX_CLUSTER_HOSTS = '__mysql_cluster_hosts__'
+    _CTX_CLUSTER_IDX   = '__mysql_cluster_idx__'
+    _CTX_CLUSTER_RETRY = '__mysql_cluster_retry__'
 
     def __init__(self, logger: object) -> None:
         """
@@ -540,6 +545,336 @@ class MySQL(object):
                 con.rollback()
 
             self.logger.error({'status': 'Error: %s' % (e)})
+            return {
+                'status': False
+            }
+
+    ## ---------------------------------------------------------------
+    ## Cluster methods — multi-node connection with automatic failover
+    ## ---------------------------------------------------------------
+
+    def _cluster_try_connect(self, context: dict, node: dict) -> bool:
+        """
+        Attempt to connect to a single MySQL node.
+
+        Args:
+            context (dict): Workflow context (connection stored here)
+            node (dict): Node config with host, port, username, password, database, charset
+
+        Returns:
+            bool: True if connection succeeded
+        """
+
+        result = self.connect(context, node)
+        return result.get('status', False)
+
+    def _cluster_failover(self, context: dict) -> bool:
+        """
+        Attempt to failover to the next available MySQL node.
+
+        Args:
+            context (dict): Workflow context
+
+        Returns:
+            bool: True if a new node was connected successfully
+        """
+
+        hosts = context.get(self._CTX_CLUSTER_HOSTS, [])
+        node_idx = context.get(self._CTX_CLUSTER_IDX, 0)
+
+        start_idx = node_idx + 1
+        for idx in range(start_idx, len(hosts)):
+            node = hosts[idx]
+            host = node.get('host', 'unknown')
+            self.logger.info({'status': 'Failover: trying MySQL node %s: %s' % (idx, host)})
+
+            ## reset connection for fresh attempt
+            context[self._CTX_CON] = None
+            context[self._CTX_CUR] = None
+
+            if self._cluster_try_connect(context, node):
+                context[self._CTX_CLUSTER_IDX] = idx
+                self.logger.info({'status': 'Failover succeeded: connected to MySQL node %s: %s' % (idx, host)})
+                return True
+
+            self.logger.error({'status': 'Failover: failed to connect to MySQL node %s: %s' % (idx, host)})
+
+        self.logger.error({'status': 'Failover: all MySQL cluster nodes exhausted'})
+        return False
+
+    def _cluster_is_connection_error(self, e: Exception) -> bool:
+        """
+        Check if an exception is a MySQL connection-related error.
+
+        Args:
+            e (Exception): The caught exception
+
+        Returns:
+            bool: True if this is a connection error that warrants failover
+        """
+
+        return isinstance(e, (OperationalError, InterfaceError))
+
+    ## def cluster_connect(self, hosts, retry_on_error) -> dict:
+    def cluster_connect(self, context: dict, cfgs: dict) -> dict:
+        """
+        Connect to the first available MySQL node in a cluster.
+
+        Tries each node in order until a successful connection is established.
+
+        Args:
+            hosts (list): List of node config dicts, each with:
+                          host, port, username, password, database, charset
+            retry_on_error (bool): Enable auto-failover on operation errors (default: True)
+
+        Returns:
+            dict: Connection status and connected node host
+        """
+
+        ## load args
+        hosts = cfgs['hosts']
+        retry_on_error = cfgs.get('retry_on_error', True)
+
+        ## debug prt
+        self.logger.debug({'mysql_cluster.host_count': len(hosts)})
+        self.logger.debug({'mysql_cluster.retry_on_error': retry_on_error})
+
+        try:
+            ## store hosts and reset state in context
+            context[self._CTX_CLUSTER_HOSTS] = hosts
+            context[self._CTX_CLUSTER_IDX] = 0
+            context[self._CTX_CLUSTER_RETRY] = retry_on_error
+
+            ## reset connection
+            context[self._CTX_CON] = None
+            context[self._CTX_CUR] = None
+
+            ## try each host in order
+            for idx, node in enumerate(hosts):
+                host = node.get('host', 'unknown')
+                self.logger.info({'status': 'Trying MySQL node %s: %s' % (idx, host)})
+
+                if self._cluster_try_connect(context, node):
+                    context[self._CTX_CLUSTER_IDX] = idx
+                    self.logger.info({'status': 'Connected to MySQL cluster node %s: %s' % (idx, host)})
+                    return {
+                        'status': True,
+                        'connected_node': host
+                    }
+
+                self.logger.error({'status': 'Failed to connect to MySQL node %s: %s' % (idx, host)})
+
+            ## all hosts exhausted
+            self.logger.error({'status': 'All MySQL cluster nodes unreachable'})
+            return {
+                'status': False,
+                'connected_node': ''
+            }
+
+        ## error handling
+        except Exception as e:
+            self.logger.error({'status': 'Error connecting to MySQL cluster: %s' % (e)})
+            return {
+                'status': False,
+                'connected_node': ''
+            }
+
+    ## def cluster_disconnect(self) -> dict:
+    def cluster_disconnect(self, context: dict, cfgs: dict) -> dict:
+        """
+        Close the active MySQL cluster connection and clean up context.
+
+        This method is safe to call multiple times.
+        """
+
+        result = self.disconnect(context, cfgs)
+
+        ## clean up cluster context keys
+        context[self._CTX_CLUSTER_HOSTS] = None
+        context[self._CTX_CLUSTER_IDX] = None
+        context[self._CTX_CLUSTER_RETRY] = None
+
+        return result
+
+    ## def cluster_query(self, sql) -> dict:
+    def cluster_query(self, context: dict, cfgs: dict) -> dict:
+        """
+        Execute a SELECT query with automatic cluster failover.
+
+        Args:
+            sql (str): SQL query string
+
+        Returns:
+            dict: Query results
+        """
+
+        ## debug prt
+        self.logger.debug({'mysql_cluster.op': 'query'})
+
+        retry_on_error = context.get(self._CTX_CLUSTER_RETRY, True)
+
+        try:
+            result = self.query(context, cfgs)
+
+            ## attempt failover if query failed
+            if not result.get('status') and retry_on_error and context.get(self._CTX_CLUSTER_HOSTS):
+                if self._cluster_failover(context):
+                    result = self.query(context, cfgs)
+
+            return result
+
+        ## error handling
+        except (OperationalError, InterfaceError) as e:
+            self.logger.error({'status': 'MySQL cluster query connection error: %s' % (e)})
+
+            if retry_on_error and self._cluster_failover(context):
+                return self.query(context, cfgs)
+
+            return {
+                'status': False,
+                'result': []
+            }
+
+        except Exception as e:
+            self.logger.error({'status': 'MySQL cluster query error: %s' % (e)})
+            return {
+                'status': False,
+                'result': []
+            }
+
+    ## def cluster_insert(self, data, table, cols) -> dict:
+    def cluster_insert(self, context: dict, cfgs: dict) -> dict:
+        """
+        Insert rows with automatic cluster failover.
+
+        Args:
+            data (ref): Data to insert
+            table (str): Target table name
+            cols (list): Column list
+
+        Returns:
+            dict: Insert status
+        """
+
+        ## debug prt
+        self.logger.debug({'mysql_cluster.op': 'insert'})
+
+        retry_on_error = context.get(self._CTX_CLUSTER_RETRY, True)
+
+        try:
+            result = self.insert(context, cfgs)
+
+            if not result.get('status') and retry_on_error and context.get(self._CTX_CLUSTER_HOSTS):
+                if self._cluster_failover(context):
+                    result = self.insert(context, cfgs)
+
+            return result
+
+        ## error handling
+        except (OperationalError, InterfaceError) as e:
+            self.logger.error({'status': 'MySQL cluster insert connection error: %s' % (e)})
+
+            if retry_on_error and self._cluster_failover(context):
+                return self.insert(context, cfgs)
+
+            return {
+                'status': False
+            }
+
+        except Exception as e:
+            self.logger.error({'status': 'MySQL cluster insert error: %s' % (e)})
+            return {
+                'status': False
+            }
+
+    ## def cluster_update(self, data, table, cols, where) -> dict:
+    def cluster_update(self, context: dict, cfgs: dict) -> dict:
+        """
+        Update records with automatic cluster failover.
+
+        Args:
+            data (ref): Update data
+            table (str): Target table name
+            cols (list): Column list
+            where (str): WHERE clause
+
+        Returns:
+            dict: Update status
+        """
+
+        ## debug prt
+        self.logger.debug({'mysql_cluster.op': 'update'})
+
+        retry_on_error = context.get(self._CTX_CLUSTER_RETRY, True)
+
+        try:
+            result = self.update(context, cfgs)
+
+            if not result.get('status') and retry_on_error and context.get(self._CTX_CLUSTER_HOSTS):
+                if self._cluster_failover(context):
+                    result = self.update(context, cfgs)
+
+            return result
+
+        ## error handling
+        except (OperationalError, InterfaceError) as e:
+            self.logger.error({'status': 'MySQL cluster update connection error: %s' % (e)})
+
+            if retry_on_error and self._cluster_failover(context):
+                return self.update(context, cfgs)
+
+            return {
+                'status': False
+            }
+
+        except Exception as e:
+            self.logger.error({'status': 'MySQL cluster update error: %s' % (e)})
+            return {
+                'status': False
+            }
+
+    ## def cluster_insertWithUK(self, data, table, cols, uk_cols) -> dict:
+    def cluster_insertWithUK(self, context: dict, cfgs: dict) -> dict:
+        """
+        Insert with duplicate key update (upsert) with automatic cluster failover.
+
+        Args:
+            data (ref): Data to upsert
+            table (str): Target table name
+            cols (list): Column list
+            uk_cols (list): Unique key column list
+
+        Returns:
+            dict: Insert/update status
+        """
+
+        ## debug prt
+        self.logger.debug({'mysql_cluster.op': 'insertWithUK'})
+
+        retry_on_error = context.get(self._CTX_CLUSTER_RETRY, True)
+
+        try:
+            result = self.insertWithUK(context, cfgs)
+
+            if not result.get('status') and retry_on_error and context.get(self._CTX_CLUSTER_HOSTS):
+                if self._cluster_failover(context):
+                    result = self.insertWithUK(context, cfgs)
+
+            return result
+
+        ## error handling
+        except (OperationalError, InterfaceError) as e:
+            self.logger.error({'status': 'MySQL cluster insertWithUK connection error: %s' % (e)})
+
+            if retry_on_error and self._cluster_failover(context):
+                return self.insertWithUK(context, cfgs)
+
+            return {
+                'status': False
+            }
+
+        except Exception as e:
+            self.logger.error({'status': 'MySQL cluster insertWithUK error: %s' % (e)})
             return {
                 'status': False
             }

@@ -49,6 +49,11 @@ class MongoDB(object):
     _CTX_CON = '__mongodb_con__'
     _CTX_DB  = '__mongodb_db__'
 
+    ## cluster context keys
+    _CTX_CLUSTER_HOSTS = '__mongodb_cluster_hosts__'
+    _CTX_CLUSTER_IDX   = '__mongodb_cluster_idx__'
+    _CTX_CLUSTER_RETRY = '__mongodb_cluster_retry__'
+
     def __init__(self, logger: object) -> None:
         """
         Initialize the MongoDB manager.
@@ -820,3 +825,303 @@ class MongoDB(object):
                 'status': False,
                 'collections': []
             }
+
+    ## ---------------------------------------------------------------
+    ## Cluster methods — multi-node connection with automatic failover
+    ## ---------------------------------------------------------------
+
+    def _cluster_try_connect(self, context: dict, node: dict) -> bool:
+        """
+        Attempt to connect to a single MongoDB node.
+
+        Args:
+            context (dict): Workflow context (connection stored here)
+            node (dict): Node config with host, port, username, password, database, etc.
+
+        Returns:
+            bool: True if connection succeeded
+        """
+
+        result = self.connect(context, node)
+        return result.get('status', False)
+
+    def _cluster_failover(self, context: dict) -> bool:
+        """
+        Attempt to failover to the next available MongoDB node.
+
+        Args:
+            context (dict): Workflow context
+
+        Returns:
+            bool: True if a new node was connected successfully
+        """
+
+        hosts = context.get(self._CTX_CLUSTER_HOSTS, [])
+        node_idx = context.get(self._CTX_CLUSTER_IDX, 0)
+
+        start_idx = node_idx + 1
+        for idx in range(start_idx, len(hosts)):
+            node = hosts[idx]
+            host = node.get('host', 'unknown')
+            self.logger.info({'status': 'Failover: trying MongoDB node %s: %s' % (idx, host)})
+
+            if self._cluster_try_connect(context, node):
+                context[self._CTX_CLUSTER_IDX] = idx
+                self.logger.info({'status': 'Failover succeeded: connected to MongoDB node %s: %s' % (idx, host)})
+                return True
+
+            self.logger.error({'status': 'Failover: failed to connect to MongoDB node %s: %s' % (idx, host)})
+
+        self.logger.error({'status': 'Failover: all MongoDB cluster nodes exhausted'})
+        return False
+
+    def _cluster_is_connection_error(self, e: Exception) -> bool:
+        """
+        Check if an exception is a MongoDB connection-related error.
+
+        Args:
+            e (Exception): The caught exception
+
+        Returns:
+            bool: True if this is a connection error that warrants failover
+        """
+
+        return isinstance(e, (ConnectionFailure, ServerSelectionTimeoutError))
+
+    def _cluster_with_failover(self, context: dict, op_name: str, operation, empty_result: dict) -> dict:
+        """
+        Execute an operation with automatic failover on connection errors.
+
+        All state is read from context (not self), ensuring correctness
+        across procedure steps where a new instance is created per step.
+
+        Args:
+            context (dict): Workflow context
+            op_name (str): Operation name for logging
+            operation (callable): Zero-arg callable that runs the operation
+            empty_result (dict): Result to return when all retries fail
+
+        Returns:
+            dict: Operation result
+        """
+
+        retry_on_error = context.get(self._CTX_CLUSTER_RETRY, True)
+
+        try:
+            result = operation()
+
+            if not result.get('status') and retry_on_error and context.get(self._CTX_CLUSTER_HOSTS):
+                if self._cluster_failover(context):
+                    result = operation()
+
+            return result
+
+        ## error handling
+        except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+            self.logger.error({'status': 'MongoDB cluster %s connection error: %s' % (op_name, e)})
+
+            if retry_on_error and self._cluster_failover(context):
+                return operation()
+
+            return empty_result
+
+        except Exception as e:
+            self.logger.error({'status': 'MongoDB cluster %s error: %s' % (op_name, e)})
+            return empty_result
+
+    ## def cluster_connect(self, hosts, retry_on_error) -> dict:
+    def cluster_connect(self, context: dict, cfgs: dict) -> dict:
+        """
+        Connect to the first available MongoDB node in a cluster.
+
+        Tries each node in order until a successful connection is established.
+
+        Args:
+            hosts (list): List of node config dicts, each with:
+                          host, port, username, password, database
+                          (plus optional tls, tls_ca_file, etc.)
+            retry_on_error (bool): Enable auto-failover on operation errors (default: True)
+
+        Returns:
+            dict: Connection status and connected node host
+        """
+
+        ## load args
+        hosts = cfgs['hosts']
+        retry_on_error = cfgs.get('retry_on_error', True)
+
+        ## debug prt
+        self.logger.debug({'mongodb_cluster.host_count': len(hosts)})
+        self.logger.debug({'mongodb_cluster.retry_on_error': retry_on_error})
+
+        try:
+            ## store hosts and reset state in context
+            context[self._CTX_CLUSTER_HOSTS] = hosts
+            context[self._CTX_CLUSTER_IDX] = 0
+            context[self._CTX_CLUSTER_RETRY] = retry_on_error
+
+            ## try each host in order
+            for idx, node in enumerate(hosts):
+                host = node.get('host', 'unknown')
+                self.logger.info({'status': 'Trying MongoDB node %s: %s' % (idx, host)})
+
+                if self._cluster_try_connect(context, node):
+                    context[self._CTX_CLUSTER_IDX] = idx
+                    self.logger.info({'status': 'Connected to MongoDB cluster node %s: %s' % (idx, host)})
+                    return {
+                        'status': True,
+                        'connected_node': host
+                    }
+
+                self.logger.error({'status': 'Failed to connect to MongoDB node %s: %s' % (idx, host)})
+
+            ## all hosts exhausted
+            self.logger.error({'status': 'All MongoDB cluster nodes unreachable'})
+            return {
+                'status': False,
+                'connected_node': ''
+            }
+
+        ## error handling
+        except Exception as e:
+            self.logger.error({'status': 'Error connecting to MongoDB cluster: %s' % (e)})
+            return {
+                'status': False,
+                'connected_node': ''
+            }
+
+    ## def cluster_disconnect(self) -> dict:
+    def cluster_disconnect(self, context: dict, cfgs: dict) -> dict:
+        """
+        Close the active MongoDB cluster connection and clean up context.
+
+        This method is safe to call multiple times.
+        """
+
+        result = self.disconnect(context, cfgs)
+
+        ## clean up cluster context keys
+        context[self._CTX_CLUSTER_HOSTS] = None
+        context[self._CTX_CLUSTER_IDX] = None
+        context[self._CTX_CLUSTER_RETRY] = None
+
+        return result
+
+    ## def cluster_find(self, collection, query, projection, sort, limit, skip) -> dict:
+    def cluster_find(self, context: dict, cfgs: dict) -> dict:
+        """
+        Query documents with automatic cluster failover.
+
+        Args:
+            collection (str): Collection name
+            query (dict): MongoDB query filter (default: {})
+            projection (dict): Optional fields to include/exclude
+            sort (list): Optional list of [field, direction] pairs
+            limit (int): Optional max documents to return
+            skip (int): Optional number of documents to skip
+
+        Returns:
+            dict: Query results with data list and count
+        """
+
+        self.logger.debug({'mongodb_cluster.op': 'find'})
+        return self._cluster_with_failover(context, 'find', lambda: self.find(context, cfgs), {'status': False, 'data': [], 'count': 0})
+
+    ## def cluster_findOne(self, collection, query) -> dict:
+    def cluster_findOne(self, context: dict, cfgs: dict) -> dict:
+        """
+        Retrieve a single document with automatic cluster failover.
+
+        Args:
+            collection (str): Collection name
+            query (dict): MongoDB query filter (default: {})
+
+        Returns:
+            dict: Single document or None
+        """
+
+        self.logger.debug({'mongodb_cluster.op': 'findOne'})
+        return self._cluster_with_failover(context, 'findOne', lambda: self.findOne(context, cfgs), {'status': False, 'data': None})
+
+    ## def cluster_insert(self, collection, data) -> dict:
+    def cluster_insert(self, context: dict, cfgs: dict) -> dict:
+        """
+        Insert documents with automatic cluster failover.
+
+        Args:
+            collection (str): Collection name
+            data (dict or list): Single document or list of documents
+
+        Returns:
+            dict: Insertion result
+        """
+
+        self.logger.debug({'mongodb_cluster.op': 'insert'})
+        return self._cluster_with_failover(context, 'insert', lambda: self.insert(context, cfgs), {'status': False, 'inserted_count': 0, 'inserted_ids': []})
+
+    ## def cluster_update(self, collection, query, update, multi) -> dict:
+    def cluster_update(self, context: dict, cfgs: dict) -> dict:
+        """
+        Update documents with automatic cluster failover.
+
+        Args:
+            collection (str): Collection name
+            query (dict): MongoDB filter query
+            update (dict): Update document (e.g. {"$set": {"field": "value"}})
+            multi (bool): Update all matching documents (default: False)
+
+        Returns:
+            dict: Update result
+        """
+
+        self.logger.debug({'mongodb_cluster.op': 'update'})
+        return self._cluster_with_failover(context, 'update', lambda: self.update(context, cfgs), {'status': False, 'matched': 0, 'modified': 0})
+
+    ## def cluster_delete(self, collection, query, multi) -> dict:
+    def cluster_delete(self, context: dict, cfgs: dict) -> dict:
+        """
+        Delete documents with automatic cluster failover.
+
+        Args:
+            collection (str): Collection name
+            query (dict): MongoDB filter query
+            multi (bool): Delete all matching (default: False)
+
+        Returns:
+            dict: Deletion result
+        """
+
+        self.logger.debug({'mongodb_cluster.op': 'delete'})
+        return self._cluster_with_failover(context, 'delete', lambda: self.delete(context, cfgs), {'status': False, 'deleted': 0})
+
+    ## def cluster_count(self, collection, query) -> dict:
+    def cluster_count(self, context: dict, cfgs: dict) -> dict:
+        """
+        Count documents with automatic cluster failover.
+
+        Args:
+            collection (str): Collection name
+            query (dict): MongoDB filter query (default: {})
+
+        Returns:
+            dict: Document count
+        """
+
+        self.logger.debug({'mongodb_cluster.op': 'count'})
+        return self._cluster_with_failover(context, 'count', lambda: self.count(context, cfgs), {'status': False, 'count': 0})
+
+    ## def cluster_aggregate(self, collection, pipeline) -> dict:
+    def cluster_aggregate(self, context: dict, cfgs: dict) -> dict:
+        """
+        Run an aggregation pipeline with automatic cluster failover.
+
+        Args:
+            collection (str): Collection name
+            pipeline (list): MongoDB aggregation pipeline stages
+
+        Returns:
+            dict: Aggregation results
+        """
+
+        self.logger.debug({'mongodb_cluster.op': 'aggregate'})
+        return self._cluster_with_failover(context, 'aggregate', lambda: self.aggregate(context, cfgs), {'status': False, 'data': [], 'count': 0})
