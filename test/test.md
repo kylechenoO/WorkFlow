@@ -1,6 +1,6 @@
 # WorkFlow Test Cases
 
-**Total: 309** | **PASS: 303** | **FAIL: 0** | **SKIP: 6** | **PENDING: 0**
+**Total: 321** | **PASS: 315** | **FAIL: 0** | **SKIP: 6** | **PENDING: 0**
 
 | ID | Category | Feature | Test Case | Steps | Expected Result | Method | Status | Notes |
 |---|---|---|---|---|---|---|---|---|
@@ -313,3 +313,15 @@
 | TC-307 | Modules | mongodb.MongoDB | MongoDB.cluster_connect — timeout parameter | 1. Step: mod=mongodb.MongoDB, method=cluster_connect, params={"hosts": [...], "timeout": 3000}<br>2. Run workflow | status=True; serverSelectionTimeoutMS set to 3000 per node | Both | PASS | MongoDB cluster_connect timeout=3000 loads |
 | TC-308 | Modules | mongodb.MongoDB | MongoDB.cluster_connect — retry_count parameter | 1. Step: mod=mongodb.MongoDB, method=cluster_connect, params={"hosts": [...], "retry_count": 2}<br>2. Run workflow | status=True; failover retries up to 2 rounds through all nodes | Both | PASS | MongoDB cluster_connect retry_count=2 loads |
 | TC-309 | Modules | mongodb.MongoDB | MongoDB.cluster_connect — retry_delay parameter | 1. Step: mod=mongodb.MongoDB, method=cluster_connect, params={"hosts": [...], "retry_delay": 2.0}<br>2. Run workflow | status=True; 2 second delay between retry rounds | Both | PASS | MongoDB cluster_connect retry_delay=2.0 loads |
+| TC-310 | System | SSH Key | Upload SSH key via Services page | 1. Navigate to System → Services<br>2. Click Upload Key<br>3. Select valid SSH private key file<br>4. Verify key info displayed | Key uploaded; Type, Fingerprint, Path shown; file at etc/ssh/default.key with 0o600 | Browser | PASS | SSH key uploaded, info displayed |
+| TC-311 | System | SSH Key | Delete SSH key | 1. Services page → click Delete on SSH Key card<br>2. Confirm deletion | Key removed; empty state message shown; file deleted from disk | Browser | PASS | SSH key deleted, UI reverts to empty state |
+| TC-312 | System | SSH Key | Replace existing SSH key | 1. Upload key A<br>2. Click Replace Key<br>3. Upload key B | Key B replaces A; new fingerprint shown | Browser | PASS | Key replaced successfully |
+| TC-313 | System | SSH Key | Upload invalid file as SSH key | 1. Upload a non-SSH file (e.g. .txt) | Error message: "Invalid SSH private key file." | Browser | PASS | Invalid key rejected with error |
+| TC-314 | System | SSH Key | @sys.ssh_key variable badge | 1. Services page → check SSH Key card header | Badge shows "@sys.ssh_key"; click copies to clipboard | Browser | PASS | Variable badge visible and copyable |
+| TC-315 | System | @sys. Variables | Resolve @sys.ssh_key in workflow | 1. Create workflow with ssh_connect step using key_file=@sys.ssh_key<br>2. Run via API | @sys.ssh_key resolves to uploaded key path (etc/ssh/default.key) | API | PASS | Variable resolved to key path |
+| TC-316 | System | @sys. Variables | Permission denied for @sys. without permission | 1. Create user without sys_variables.use permission<br>2. Run workflow with @sys.ssh_key as that user | PermissionError: user does not have permission to use system variables | API | PASS | Permission enforcement verified |
+| TC-317 | Accounts | Permissions | sys_variables.use in Role edit | 1. Navigate to Roles → Edit admin role<br>2. Check SYS_VARIABLES section | SYS_VARIABLES section shows "use" checkbox; checked for admin | Browser | PASS | Permission visible on role edit page |
+| TC-318 | Accounts | Permissions | sys_variables.use in Group edit | 1. Navigate to Groups → Edit admin group<br>2. Check SYS_VARIABLES section | SYS_VARIABLES section shows "use" checkbox | Browser | PASS | Permission visible on group edit page |
+| TC-319 | Workflows | Error Page | Deleted workflow shows friendly page | 1. Delete a workflow<br>2. Navigate to /workflows/{deleted}/runs/ | Friendly "Workflow Not Found" page with Back to Workflows button | Browser | PASS | Friendly page shown instead of 404 |
+| TC-320 | Workflows | Error Page | Nonexistent workflow shows friendly page | 1. Navigate to /workflows/nonexistent_name/edit/ | Same friendly "Workflow Not Found" page | Browser | PASS | Friendly page shown for nonexistent workflow |
+| TC-321 | Workflows | Error Page | All workflow sub-pages handle missing flow | 1. Try /runs/, /edit/, /run/1/, /versions/ for deleted workflow | All return friendly error page, not raw 404 | Browser | PASS | All 7 views return friendly page |

@@ -46,6 +46,8 @@ A Python-based **workflow automation platform** built on JSON-defined flows, dyn
 - **Backup & restore** — export/import workflows, modules, accounts, and settings as ZIP
 - **SSL management** — upload server certificates and trusted CA certificates
 - **Services management** — view, configure, and restart backend/frontend services from the UI
+- **SSH key management** — upload a global SSH private key and reference it as `@sys.ssh_key` in workflow procedures
+- **System variables (`@sys.`)** — shared variables resolved at execution time with role/group-based permission control
 - **Flask REST API** — full programmatic control (port 5001)
 - **Django web frontend** — browser-based management UI (port 5002)
 - **CLI interface** — manage and run workflows from the command line
@@ -700,6 +702,7 @@ Workflows are stored as JSON in the database. A workflow contains a list of **pr
 | `@@value` | Literal string `@value` (escaped) |
 | `value` | Literal string as-is |
 | `@var.name` | Workflow-level variable |
+| `@sys.key` | System variable (e.g. `@sys.ssh_key`) |
 
 ### Procedure Fields
 
@@ -815,6 +818,8 @@ Supported formats: **CSV**, **JSON**, **XLSX**, **YAML** (auto-detected from ext
 | `download` | `remote_path`, `local_path` | Download file via SFTP |
 
 `run` and `run_script` return `{"status": True, "exit_code": N, "stdout": "...", "stderr": "..."}`.
+
+> **Tip:** Use `@sys.ssh_key` as the `key_file` parameter to reference the global SSH key configured in System → Services.
 
 ---
 
@@ -961,6 +966,9 @@ Supported metric types: `gauge`, `counter`, `histogram`, `summary`.
 | `system_setting` | Key-value system configuration |
 | `system_api_key` | API access tokens (hashed) |
 | `system_devtool_request` | Devtool request history |
+| `wf_permission` | Page + action permission definitions |
+| `wf_role_permission` | Role ↔ Permission mappings |
+| `wf_group_permission` | Group ↔ Permission mappings |
 
 ### Key Table Details
 
@@ -1039,12 +1047,12 @@ WorkFlow is designed as an **internal tool** deployed behind a firewall. The fol
 
 ## Testing
 
-All features have been tested across **309 test cases** covering authentication, workflows, modules, run logs, system admin, REST API, and browser UI.
+All features have been tested across **321 test cases** covering authentication, workflows, modules, run logs, system admin, REST API, and browser UI.
 
 | Metric | Count |
 |--------|-------|
-| **Total** | 309 |
-| **Pass** | 303 |
+| **Total** | 321 |
+| **Pass** | 315 |
 | **Fail** | 0 |
 | **Skip** | 6 |
 
@@ -1091,13 +1099,16 @@ The full test report with detailed steps, expected results, and screenshots is a
 - **Developer tools** — built-in REST client and SQL query tool in the web UI
 - **Audit log** — every user action captured with IP, timestamp, and change detail
 - **Role-based access control** — granular page + action permissions via Groups and Roles
+- **SSH key management** — upload and manage a global SSH private key from System → Services
+- **System variables (`@sys.`)** — shared variables (e.g. `@sys.ssh_key`) resolved at execution time with permission control via Roles/Groups
+- **Friendly error pages** — deleted or missing workflows show a clean "Workflow Not Found" page instead of raw 404
 
 **Improvements**
 - Expanded to **14 built-in modules** (Bash, HTTP, SSH, FileIO, MySQL, MongoDB, Kafka, Elasticsearch, Prometheus, Notify, Filter, DataTransformer, Kt, MultiProcess)
 - Service management via unified `bin/service.sh` (start/stop/restart/status for backend and frontend)
 - Port configuration auto-sync between `global.json` and `service.conf` via the web UI
 - Password verification modal for sensitive system operations
-- Comprehensive test suite: **309 test cases** (303 pass, 0 fail, 6 skip)
+- Comprehensive test suite: **321 test cases** (315 pass, 0 fail, 6 skip)
 
 **Security**
 - Passwords masked in debug logs

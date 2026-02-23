@@ -60,7 +60,7 @@ class Ssh(object):
         Establish an SSH connection to a remote server.
 
         Args:
-            host (str): Remote server hostname or IP
+            host (str): Remote server hostname or IP, @sys.ssh_key to use the system ssh_key on workflow (default: @sys.ssh_key)
             port (int): Optional SSH port (default: 22)
             username (str): SSH username
             password (str): Optional SSH password (default: "")
