@@ -24,6 +24,7 @@ __email__ = "kyle@hacking-linux.com"
 
 ## import buildin pkgs
 import os
+import time
 import hashlib
 import base64
 import urllib.request
@@ -50,9 +51,12 @@ class MongoDB(object):
     _CTX_DB  = '__mongodb_db__'
 
     ## cluster context keys
-    _CTX_CLUSTER_HOSTS = '__mongodb_cluster_hosts__'
-    _CTX_CLUSTER_IDX   = '__mongodb_cluster_idx__'
-    _CTX_CLUSTER_RETRY = '__mongodb_cluster_retry__'
+    _CTX_CLUSTER_HOSTS       = '__mongodb_cluster_hosts__'
+    _CTX_CLUSTER_IDX         = '__mongodb_cluster_idx__'
+    _CTX_CLUSTER_RETRY       = '__mongodb_cluster_retry__'
+    _CTX_CLUSTER_TIMEOUT     = '__mongodb_cluster_timeout__'
+    _CTX_CLUSTER_RETRY_COUNT = '__mongodb_cluster_retry_count__'
+    _CTX_CLUSTER_DELAY       = '__mongodb_cluster_delay__'
 
     def __init__(self, logger: object) -> None:
         """
@@ -187,6 +191,7 @@ class MongoDB(object):
         tls_cert_file = cfgs.get('tls_cert_file', None)
         tls_key_file = cfgs.get('tls_key_file', None)
         tls_allow_invalid_certs = cfgs.get('tls_allow_invalid_certs', False)
+        server_selection_timeout = cfgs.get('server_selection_timeout', None)
 
         ## debug prt (never log password or key file)
         self.logger.debug({'mongo.host': host})
@@ -201,7 +206,7 @@ class MongoDB(object):
             kwargs = {
                 'host': host,
                 'port': port,
-                'serverSelectionTimeoutMS': 5000
+                'serverSelectionTimeoutMS': int(server_selection_timeout) if server_selection_timeout else 5000
             }
 
             ## set auth if provided
@@ -842,12 +847,21 @@ class MongoDB(object):
             bool: True if connection succeeded
         """
 
+        ## inject timeout from cluster context if available
+        timeout_ms = context.get(self._CTX_CLUSTER_TIMEOUT, None)
+        if timeout_ms is not None:
+            node = dict(node)
+            node['server_selection_timeout'] = timeout_ms
+
         result = self.connect(context, node)
         return result.get('status', False)
 
     def _cluster_failover(self, context: dict) -> bool:
         """
-        Attempt to failover to the next available MongoDB node.
+        Attempt to failover to the next available MongoDB node with wrap-around retry.
+
+        Tries all nodes starting from the current index + 1, wrapping around.
+        Repeats for retry_count rounds with retry_delay sleep between rounds.
 
         Args:
             context (dict): Workflow context
@@ -858,21 +872,37 @@ class MongoDB(object):
 
         hosts = context.get(self._CTX_CLUSTER_HOSTS, [])
         node_idx = context.get(self._CTX_CLUSTER_IDX, 0)
+        retry_count = context.get(self._CTX_CLUSTER_RETRY_COUNT, 3)
+        retry_delay = context.get(self._CTX_CLUSTER_DELAY, 1.0)
+        num_hosts = len(hosts)
 
-        start_idx = node_idx + 1
-        for idx in range(start_idx, len(hosts)):
-            node = hosts[idx]
-            host = node.get('host', 'unknown')
-            self.logger.info({'status': 'Failover: trying MongoDB node %s: %s' % (idx, host)})
+        if num_hosts == 0:
+            self.logger.error({'status': 'Failover: no MongoDB cluster hosts configured'})
+            return False
 
-            if self._cluster_try_connect(context, node):
-                context[self._CTX_CLUSTER_IDX] = idx
-                self.logger.info({'status': 'Failover succeeded: connected to MongoDB node %s: %s' % (idx, host)})
-                return True
+        for round_num in range(retry_count):
+            self.logger.info({'status': 'Failover round %s/%s for MongoDB cluster' % (round_num + 1, retry_count)})
 
-            self.logger.error({'status': 'Failover: failed to connect to MongoDB node %s: %s' % (idx, host)})
+            ## sleep between rounds (not before the first)
+            if round_num > 0:
+                self.logger.debug({'status': 'Failover: sleeping %ss before round %s' % (retry_delay, round_num + 1)})
+                time.sleep(retry_delay)
 
-        self.logger.error({'status': 'Failover: all MongoDB cluster nodes exhausted'})
+            ## try all nodes in wrap-around order starting from current + 1
+            for offset in range(1, num_hosts + 1):
+                idx = (node_idx + offset) % num_hosts
+                node = hosts[idx]
+                host = node.get('host', 'unknown')
+                self.logger.info({'status': 'Failover: trying MongoDB node %s: %s' % (idx, host)})
+
+                if self._cluster_try_connect(context, node):
+                    context[self._CTX_CLUSTER_IDX] = idx
+                    self.logger.info({'status': 'Failover succeeded: connected to MongoDB node %s: %s' % (idx, host)})
+                    return True
+
+                self.logger.error({'status': 'Failover: failed to connect to MongoDB node %s: %s' % (idx, host)})
+
+        self.logger.error({'status': 'Failover: all MongoDB cluster nodes exhausted after %s rounds' % (retry_count)})
         return False
 
     def _cluster_is_connection_error(self, e: Exception) -> bool:
@@ -929,7 +959,7 @@ class MongoDB(object):
             self.logger.error({'status': 'MongoDB cluster %s error: %s' % (op_name, e)})
             return empty_result
 
-    ## def cluster_connect(self, hosts, retry_on_error) -> dict:
+    ## def cluster_connect(self, hosts, retry_on_error, timeout, retry_count, retry_delay) -> dict:
     def cluster_connect(self, context: dict, cfgs: dict) -> dict:
         """
         Connect to the first available MongoDB node in a cluster.
@@ -941,6 +971,9 @@ class MongoDB(object):
                           host, port, username, password, database
                           (plus optional tls, tls_ca_file, etc.)
             retry_on_error (bool): Enable auto-failover on operation errors (default: True)
+            timeout (int): Connection timeout per node in milliseconds (default: 5000)
+            retry_count (int): Number of full rounds through all nodes on failover (default: 3)
+            retry_delay (float): Sleep in seconds between failover rounds (default: 1.0)
 
         Returns:
             dict: Connection status and connected node host
@@ -949,16 +982,25 @@ class MongoDB(object):
         ## load args
         hosts = cfgs['hosts']
         retry_on_error = cfgs.get('retry_on_error', True)
+        timeout = int(cfgs.get('timeout', 5000))
+        retry_count = int(cfgs.get('retry_count', 3))
+        retry_delay = float(cfgs.get('retry_delay', 1.0))
 
         ## debug prt
         self.logger.debug({'mongodb_cluster.host_count': len(hosts)})
         self.logger.debug({'mongodb_cluster.retry_on_error': retry_on_error})
+        self.logger.debug({'mongodb_cluster.timeout': timeout})
+        self.logger.debug({'mongodb_cluster.retry_count': retry_count})
+        self.logger.debug({'mongodb_cluster.retry_delay': retry_delay})
 
         try:
             ## store hosts and reset state in context
             context[self._CTX_CLUSTER_HOSTS] = hosts
             context[self._CTX_CLUSTER_IDX] = 0
             context[self._CTX_CLUSTER_RETRY] = retry_on_error
+            context[self._CTX_CLUSTER_TIMEOUT] = timeout
+            context[self._CTX_CLUSTER_RETRY_COUNT] = retry_count
+            context[self._CTX_CLUSTER_DELAY] = retry_delay
 
             ## try each host in order
             for idx, node in enumerate(hosts):
@@ -1004,6 +1046,9 @@ class MongoDB(object):
         context[self._CTX_CLUSTER_HOSTS] = None
         context[self._CTX_CLUSTER_IDX] = None
         context[self._CTX_CLUSTER_RETRY] = None
+        context[self._CTX_CLUSTER_TIMEOUT] = None
+        context[self._CTX_CLUSTER_RETRY_COUNT] = None
+        context[self._CTX_CLUSTER_DELAY] = None
 
         return result
 

@@ -18,6 +18,7 @@ __version__ = "0.0.2"
 __email__ = "kyle@hacking-linux.com"
 
 ## import buildin pkgs
+import time
 import pymysql
 import pandas as pd
 from pymysql import Error, OperationalError, InterfaceError
@@ -42,9 +43,12 @@ class MySQL(object):
     _CTX_CUR = '__mysql_cur__'
 
     ## cluster context keys
-    _CTX_CLUSTER_HOSTS = '__mysql_cluster_hosts__'
-    _CTX_CLUSTER_IDX   = '__mysql_cluster_idx__'
-    _CTX_CLUSTER_RETRY = '__mysql_cluster_retry__'
+    _CTX_CLUSTER_HOSTS       = '__mysql_cluster_hosts__'
+    _CTX_CLUSTER_IDX         = '__mysql_cluster_idx__'
+    _CTX_CLUSTER_RETRY       = '__mysql_cluster_retry__'
+    _CTX_CLUSTER_TIMEOUT     = '__mysql_cluster_timeout__'
+    _CTX_CLUSTER_RETRY_COUNT = '__mysql_cluster_retry_count__'
+    _CTX_CLUSTER_DELAY       = '__mysql_cluster_delay__'
 
     def __init__(self, logger: object) -> None:
         """
@@ -88,6 +92,7 @@ class MySQL(object):
         password = cfgs['password']
         database = cfgs['database']
         charset = cfgs['charset']
+        connect_timeout = cfgs.get('connect_timeout', None)
 
         ## debug prt
         self.logger.debug({'db.host': host})
@@ -97,15 +102,22 @@ class MySQL(object):
         self.logger.debug({'db.charset': charset})
 
         try:
+            ## build connection kwargs
+            kwargs = {
+                'host': host,
+                'port': int(port),
+                'user': username,
+                'password': password,
+                'database': database,
+                'charset': charset
+            }
+
+            ## set connect timeout if provided (convert ms to seconds)
+            if connect_timeout is not None:
+                kwargs['connect_timeout'] = int(connect_timeout / 1000) or 1
+
             ## connect to db
-            con = pymysql.connect(
-                host = host,
-                port = int(port),
-                user = username,
-                password = password,
-                database = database,
-                charset = charset
-            )
+            con = pymysql.connect(**kwargs)
 
             ## gen cursor
             if con.open:
@@ -565,12 +577,21 @@ class MySQL(object):
             bool: True if connection succeeded
         """
 
+        ## inject timeout from cluster context if available
+        timeout_ms = context.get(self._CTX_CLUSTER_TIMEOUT, None)
+        if timeout_ms is not None:
+            node = dict(node)
+            node['connect_timeout'] = timeout_ms
+
         result = self.connect(context, node)
         return result.get('status', False)
 
     def _cluster_failover(self, context: dict) -> bool:
         """
-        Attempt to failover to the next available MySQL node.
+        Attempt to failover to the next available MySQL node with wrap-around retry.
+
+        Tries all nodes starting from the current index + 1, wrapping around.
+        Repeats for retry_count rounds with retry_delay sleep between rounds.
 
         Args:
             context (dict): Workflow context
@@ -581,25 +602,41 @@ class MySQL(object):
 
         hosts = context.get(self._CTX_CLUSTER_HOSTS, [])
         node_idx = context.get(self._CTX_CLUSTER_IDX, 0)
+        retry_count = context.get(self._CTX_CLUSTER_RETRY_COUNT, 3)
+        retry_delay = context.get(self._CTX_CLUSTER_DELAY, 1.0)
+        num_hosts = len(hosts)
 
-        start_idx = node_idx + 1
-        for idx in range(start_idx, len(hosts)):
-            node = hosts[idx]
-            host = node.get('host', 'unknown')
-            self.logger.info({'status': 'Failover: trying MySQL node %s: %s' % (idx, host)})
+        if num_hosts == 0:
+            self.logger.error({'status': 'Failover: no MySQL cluster hosts configured'})
+            return False
 
-            ## reset connection for fresh attempt
-            context[self._CTX_CON] = None
-            context[self._CTX_CUR] = None
+        for round_num in range(retry_count):
+            self.logger.info({'status': 'Failover round %s/%s for MySQL cluster' % (round_num + 1, retry_count)})
 
-            if self._cluster_try_connect(context, node):
-                context[self._CTX_CLUSTER_IDX] = idx
-                self.logger.info({'status': 'Failover succeeded: connected to MySQL node %s: %s' % (idx, host)})
-                return True
+            ## sleep between rounds (not before the first)
+            if round_num > 0:
+                self.logger.debug({'status': 'Failover: sleeping %ss before round %s' % (retry_delay, round_num + 1)})
+                time.sleep(retry_delay)
 
-            self.logger.error({'status': 'Failover: failed to connect to MySQL node %s: %s' % (idx, host)})
+            ## try all nodes in wrap-around order starting from current + 1
+            for offset in range(1, num_hosts + 1):
+                idx = (node_idx + offset) % num_hosts
+                node = hosts[idx]
+                host = node.get('host', 'unknown')
+                self.logger.info({'status': 'Failover: trying MySQL node %s: %s' % (idx, host)})
 
-        self.logger.error({'status': 'Failover: all MySQL cluster nodes exhausted'})
+                ## reset connection for fresh attempt
+                context[self._CTX_CON] = None
+                context[self._CTX_CUR] = None
+
+                if self._cluster_try_connect(context, node):
+                    context[self._CTX_CLUSTER_IDX] = idx
+                    self.logger.info({'status': 'Failover succeeded: connected to MySQL node %s: %s' % (idx, host)})
+                    return True
+
+                self.logger.error({'status': 'Failover: failed to connect to MySQL node %s: %s' % (idx, host)})
+
+        self.logger.error({'status': 'Failover: all MySQL cluster nodes exhausted after %s rounds' % (retry_count)})
         return False
 
     def _cluster_is_connection_error(self, e: Exception) -> bool:
@@ -615,7 +652,7 @@ class MySQL(object):
 
         return isinstance(e, (OperationalError, InterfaceError))
 
-    ## def cluster_connect(self, hosts, retry_on_error) -> dict:
+    ## def cluster_connect(self, hosts, retry_on_error, timeout, retry_count, retry_delay) -> dict:
     def cluster_connect(self, context: dict, cfgs: dict) -> dict:
         """
         Connect to the first available MySQL node in a cluster.
@@ -626,6 +663,9 @@ class MySQL(object):
             hosts (list): List of node config dicts, each with:
                           host, port, username, password, database, charset
             retry_on_error (bool): Enable auto-failover on operation errors (default: True)
+            timeout (int): Connection timeout per node in milliseconds (default: 5000)
+            retry_count (int): Number of full rounds through all nodes on failover (default: 3)
+            retry_delay (float): Sleep in seconds between failover rounds (default: 1.0)
 
         Returns:
             dict: Connection status and connected node host
@@ -634,16 +674,25 @@ class MySQL(object):
         ## load args
         hosts = cfgs['hosts']
         retry_on_error = cfgs.get('retry_on_error', True)
+        timeout = int(cfgs.get('timeout', 5000))
+        retry_count = int(cfgs.get('retry_count', 3))
+        retry_delay = float(cfgs.get('retry_delay', 1.0))
 
         ## debug prt
         self.logger.debug({'mysql_cluster.host_count': len(hosts)})
         self.logger.debug({'mysql_cluster.retry_on_error': retry_on_error})
+        self.logger.debug({'mysql_cluster.timeout': timeout})
+        self.logger.debug({'mysql_cluster.retry_count': retry_count})
+        self.logger.debug({'mysql_cluster.retry_delay': retry_delay})
 
         try:
             ## store hosts and reset state in context
             context[self._CTX_CLUSTER_HOSTS] = hosts
             context[self._CTX_CLUSTER_IDX] = 0
             context[self._CTX_CLUSTER_RETRY] = retry_on_error
+            context[self._CTX_CLUSTER_TIMEOUT] = timeout
+            context[self._CTX_CLUSTER_RETRY_COUNT] = retry_count
+            context[self._CTX_CLUSTER_DELAY] = retry_delay
 
             ## reset connection
             context[self._CTX_CON] = None
@@ -693,6 +742,9 @@ class MySQL(object):
         context[self._CTX_CLUSTER_HOSTS] = None
         context[self._CTX_CLUSTER_IDX] = None
         context[self._CTX_CLUSTER_RETRY] = None
+        context[self._CTX_CLUSTER_TIMEOUT] = None
+        context[self._CTX_CLUSTER_RETRY_COUNT] = None
+        context[self._CTX_CLUSTER_DELAY] = None
 
         return result
 
