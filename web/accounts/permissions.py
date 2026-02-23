@@ -39,6 +39,7 @@ PERMISSION_REGISTRY = [
     ('syslog', 'view'),
     ('system', 'edit'),
     ('devtool', 'use'),
+    ('sys_variables', 'use'),
 ]
 
 ## default permission sets for seeding

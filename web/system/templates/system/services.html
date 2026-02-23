@@ -184,6 +184,58 @@
   </div>
   {% endfor %}
 
+  <!-- SSH Key -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-key"></i> Default SSH Key</strong>
+        <span class="badge bg-light text-dark border" style="font-size:11px;">
+          Variable: <code class="text-primary" id="ssh-var-badge" style="cursor:pointer;"
+                         onclick="navigator.clipboard.writeText('@sys.ssh_key');showToast('Copied @sys.ssh_key',true);"
+                         title="Click to copy">@sys.ssh_key</code>
+        </span>
+      </div>
+      <div class="card-body">
+        <div id="ssh-key-info">
+          {% if ssh_key_exists and ssh_key_info %}
+          <table class="table table-sm mb-2 small">
+            <tr>
+              <td class="text-muted pe-2" style="white-space:nowrap;">Type</td>
+              <td class="font-monospace" style="font-size:12px;" id="ssh-key-type">{{ ssh_key_info.type }} ({{ ssh_key_info.bits }} bits)</td>
+            </tr>
+            <tr>
+              <td class="text-muted pe-2" style="white-space:nowrap;">Fingerprint</td>
+              <td class="font-monospace" style="font-size:12px;" id="ssh-key-fp">{{ ssh_key_info.fingerprint }}</td>
+            </tr>
+            <tr>
+              <td class="text-muted pe-2" style="white-space:nowrap;">Path</td>
+              <td class="font-monospace" style="font-size:12px;">{{ ssh_key_path }}</td>
+            </tr>
+          </table>
+          {% else %}
+          <p class="text-muted small mb-2" id="ssh-key-empty">
+            No default SSH key configured. Upload a private key to use <code>@sys.ssh_key</code> in workflow SSH connections.
+          </p>
+          {% endif %}
+        </div>
+
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-primary" onclick="document.getElementById('ssh-key-file').click();">
+            <i class="bi bi-upload"></i> {% if ssh_key_exists %}Replace Key{% else %}Upload Key{% endif %}
+          </button>
+          {% if ssh_key_exists %}
+          <button class="btn btn-sm btn-outline-danger" onclick="confirmDeleteSshKey()">
+            <i class="bi bi-trash"></i> Delete
+          </button>
+          {% endif %}
+          <input type="file" id="ssh-key-file" class="d-none" accept=".pem,.key"
+                 onchange="uploadSshKey(this)">
+          <span class="spinner-border spinner-border-sm text-secondary d-none" id="ssh-key-spinner"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- global.json (read-only) -->
   {% if global_json %}
   <div class="col-12">
@@ -562,6 +614,59 @@ document.getElementById('pw-verify-btn').addEventListener('click', async functio
 document.getElementById('pw-verify-input').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') document.getElementById('pw-verify-btn').click();
 });
+
+/* ---- SSH key management ---- */
+
+async function uploadSshKey(input) {
+  if (!input.files.length) return;
+  var spinner = document.getElementById('ssh-key-spinner');
+  spinner.classList.remove('d-none');
+
+  try {
+    var fd = new FormData();
+    fd.append('ssh_key_file', input.files[0]);
+    var resp = await fetch('{% url "system:ssh_key_upload" %}', {
+      method: 'POST',
+      headers: {'X-CSRFToken': CSRF},
+      body: fd
+    });
+    var data = await resp.json();
+    if (data.status) {
+      showToast('SSH key uploaded successfully.', true);
+      setTimeout(function() { location.reload(); }, 600);
+    } else {
+      showToast(data.error || 'Upload failed', false);
+    }
+  } catch(e) {
+    showToast('Upload request failed: ' + e, false);
+  } finally {
+    spinner.classList.add('d-none');
+    input.value = '';
+  }
+}
+
+function confirmDeleteSshKey() {
+  if (!confirm('Delete the default SSH key? Workflows using @sys.ssh_key will fail until a new key is uploaded.')) return;
+  deleteSshKey();
+}
+
+async function deleteSshKey() {
+  try {
+    var resp = await fetch('{% url "system:ssh_key_delete" %}', {
+      method: 'POST',
+      headers: {'X-CSRFToken': CSRF}
+    });
+    var data = await resp.json();
+    if (data.status) {
+      showToast('SSH key deleted.', true);
+      setTimeout(function() { location.reload(); }, 600);
+    } else {
+      showToast(data.error || 'Delete failed', false);
+    }
+  } catch(e) {
+    showToast('Delete request failed: ' + e, false);
+  }
+}
 
 /* align log box bottom edge to configuration card bottom edge */
 window.addEventListener('load', function() {

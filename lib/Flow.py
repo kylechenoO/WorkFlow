@@ -55,6 +55,7 @@ class Flow(object):
         Supported syntax:
             - Literal values: used as-is
             - Escaped literals: @@value -> @value
+            - System variable: @sys.key (e.g. @sys.ssh_key)
             - Context reference: @step
             - Context key reference: @step.key
 
@@ -77,10 +78,16 @@ class Flow(object):
                     resolved[k] = v[1:]
                     continue
     
-                ## reference: @step or @step.key
+                ## reference: @step or @step.key or @sys.key
                 if v.startswith("@"):
                     ref = v[1:]
-    
+
+                    ## system variable: @sys.key
+                    if ref.startswith("sys."):
+                        sys_key = ref[4:]
+                        resolved[k] = self._resolve_sys_var(sys_key, context)
+                        continue
+
                     ## @step.key, reference to a specific key in a step result
                     if "." in ref:
                         step, key = ref.split(".", 1)
@@ -109,6 +116,109 @@ class Flow(object):
             ## literal value
             resolved[k] = v
         return resolved
+
+    ## =============================================================
+    ##  System Variable Map
+    ## =============================================================
+
+    _SYS_VAR_MAP = {
+        'ssh_key': 'ssh_default_key_path',
+    }
+
+    def _resolve_sys_var(self, key: str, context: dict) -> str:
+        """
+        Resolve a system variable by key name.
+
+        Checks user permission (sys_variables.use) via trigger_by in context,
+        then looks up the value from SystemSetting in the database.
+
+        Args:
+            key (str): System variable key (e.g. 'ssh_key')
+            context (dict): Execution context containing __trigger_by__
+
+        Returns:
+            str: Resolved value (e.g. file path)
+
+        Raises:
+            KeyError: If variable is unknown or not configured
+            PermissionError: If user lacks sys_variables.use permission
+        """
+
+        ## validate key exists in map
+        if key not in self._SYS_VAR_MAP:
+            msg = "Unknown system variable: @sys.%s" % key
+            self.logger.error({"msg": msg})
+            raise KeyError(msg)
+
+        ## permission check via direct SQL (works in both Flask and Django context)
+        trigger_by = context.get('__trigger_by__')
+        if trigger_by:
+            try:
+                self.MySQLObj._ensure_connection()
+
+                ## check if user is superuser
+                self.MySQLObj.cur.execute(
+                    "SELECT is_superuser FROM auth_user WHERE username = %s",
+                    (trigger_by,)
+                )
+                user_row = self.MySQLObj.cur.fetchone()
+                if user_row is None:
+                    msg = "User '%s' not found for permission check" % trigger_by
+                    self.logger.error({"msg": msg})
+                    raise PermissionError(msg)
+
+                is_superuser = user_row['is_superuser'] if isinstance(user_row, dict) else user_row[0]
+                if not is_superuser:
+                    ## check role + group permissions for sys_variables.use
+                    perm_sql = (
+                        "SELECT COUNT(*) AS cnt FROM ("
+                        "  SELECT rp.permission_id FROM wf_role_permission rp"
+                        "  JOIN wf_permission p ON p.id = rp.permission_id"
+                        "  JOIN accounts_role_users ru ON ru.role_id = rp.role_id"
+                        "  JOIN auth_user u ON u.id = ru.user_id"
+                        "  WHERE u.username = %s AND p.page = 'sys_variables' AND p.action = 'use'"
+                        "  UNION"
+                        "  SELECT gp.permission_id FROM wf_group_permission gp"
+                        "  JOIN wf_permission p ON p.id = gp.permission_id"
+                        "  JOIN auth_user_groups ug ON ug.group_id = gp.group_id"
+                        "  JOIN auth_user u ON u.id = ug.user_id"
+                        "  WHERE u.username = %s AND p.page = 'sys_variables' AND p.action = 'use'"
+                        ") t"
+                    )
+                    self.MySQLObj.cur.execute(perm_sql, (trigger_by, trigger_by))
+                    perm_row = self.MySQLObj.cur.fetchone()
+                    cnt = perm_row['cnt'] if isinstance(perm_row, dict) else perm_row[0]
+                    if cnt == 0:
+                        msg = "User '%s' does not have permission to use system variables" % trigger_by
+                        self.logger.error({"msg": msg})
+                        raise PermissionError(msg)
+
+            except PermissionError:
+                raise
+            except Exception as e:
+                self.logger.error({"msg": "Error checking sys_variables permission: %s" % (e)})
+
+        ## look up value from system_setting table via direct SQL
+        setting_key = self._SYS_VAR_MAP[key]
+        try:
+            self.MySQLObj._ensure_connection()
+            self.MySQLObj.cur.execute(
+                "SELECT value FROM system_setting WHERE `key` = %s",
+                (setting_key,)
+            )
+            row = self.MySQLObj.cur.fetchone()
+            value = (row['value'] if isinstance(row, dict) else row[0]) if row else ''
+        except Exception as e:
+            self.logger.error({"msg": "Error reading system variable @sys.%s: %s" % (key, e)})
+            raise KeyError("Failed to read system variable: @sys.%s" % key)
+
+        if not value:
+            msg = "System variable @sys.%s is not configured" % key
+            self.logger.error({"msg": msg})
+            raise KeyError(msg)
+
+        self.logger.debug({"sys_var": "@sys.%s resolved" % key})
+        return value
 
     def getFlows(self) -> list:
         """
