@@ -36,6 +36,19 @@ _HEADER_MAP = {
 }
 
 
+def _get_flow_or_not_found(request, flow_name):
+    """Return (flow, None) or (None, error_response) for missing/deleted workflows."""
+
+    try:
+        flow = WfFlow.objects.get(flow_name=flow_name, deleted=False)
+        return flow, None
+    except WfFlow.DoesNotExist:
+        return None, render(request, 'workflows/flow_not_found.html', {
+            'nav_active': 'workflows',
+            'flow_name': flow_name,
+        })
+
+
 def _get_request_headers(request):
     """Extract safe HTTP request headers from request.META."""
 
@@ -213,7 +226,9 @@ def flow_create(request):
 def flow_edit(request, flow_name):
     """Edit an existing workflow via the dual-mode editor."""
 
-    flow = get_object_or_404(WfFlow, flow_name=flow_name, deleted=False)
+    flow, err_resp = _get_flow_or_not_found(request, flow_name)
+    if err_resp:
+        return err_resp
     procedures_data = flow.get_procedures()
 
     if request.method == 'POST':
@@ -560,7 +575,9 @@ def flow_rename(request, flow_name):
 def flow_run_detail(request, flow_name, run_id):
     """Show run detail with visual step-by-step status."""
 
-    flow = get_object_or_404(WfFlow, flow_name=flow_name, deleted=False)
+    flow, err_resp = _get_flow_or_not_found(request, flow_name)
+    if err_resp:
+        return err_resp
     run = get_object_or_404(WfRunHistory, pk=run_id, flow_name=flow_name)
     steps = list(WfRunStep.objects.filter(run=run).order_by('step_order'))
 
@@ -629,7 +646,9 @@ def flow_run_detail(request, flow_name, run_id):
 def flow_run_history(request, flow_name):
     """Show all run history for a workflow."""
 
-    flow = get_object_or_404(WfFlow, flow_name=flow_name, deleted=False)
+    flow, err_resp = _get_flow_or_not_found(request, flow_name)
+    if err_resp:
+        return err_resp
 
     ## base queryset
     qs = WfRunHistory.objects.filter(flow_name=flow_name).order_by('-start_time')
@@ -787,7 +806,9 @@ def run_history_all(request):
 def flow_versions(request, flow_name):
     """Show version history for a workflow."""
 
-    flow = get_object_or_404(WfFlow, flow_name=flow_name, deleted=False)
+    flow, err_resp = _get_flow_or_not_found(request, flow_name)
+    if err_resp:
+        return err_resp
     versions = WfVersion.get_history(WfVersion.TYPE_FLOW, flow_name)
 
     return render(request, 'workflows/flow_versions.html', {
@@ -801,7 +822,9 @@ def flow_versions(request, flow_name):
 def flow_version_detail(request, flow_name, version_id):
     """Show a specific version's content."""
 
-    flow = get_object_or_404(WfFlow, flow_name=flow_name, deleted=False)
+    flow, err_resp = _get_flow_or_not_found(request, flow_name)
+    if err_resp:
+        return err_resp
     version = get_object_or_404(
         WfVersion, pk=version_id,
         type=WfVersion.TYPE_FLOW,
@@ -827,7 +850,9 @@ def flow_version_detail(request, flow_name, version_id):
 def flow_version_diff(request, flow_name):
     """Compare two flow versions side by side."""
 
-    flow = get_object_or_404(WfFlow, flow_name=flow_name, deleted=False)
+    flow, err_resp = _get_flow_or_not_found(request, flow_name)
+    if err_resp:
+        return err_resp
 
     v1_id = request.GET.get('v1')
     v2_id = request.GET.get('v2')
@@ -871,7 +896,9 @@ def flow_version_restore(request, flow_name, version_id):
     if request.method != 'POST':
         return redirect('workflows:flow_versions', flow_name=flow_name)
 
-    flow = get_object_or_404(WfFlow, flow_name=flow_name, deleted=False)
+    flow, err_resp = _get_flow_or_not_found(request, flow_name)
+    if err_resp:
+        return err_resp
     version = get_object_or_404(
         WfVersion, pk=version_id,
         type=WfVersion.TYPE_FLOW,
