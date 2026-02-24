@@ -17,7 +17,6 @@ import pymysql
 import pandas as pd
 from pymysql import Error
 from logging import Logger
-from urllib.parse import quote_plus
 
 class MySQL(object):
     """
@@ -99,7 +98,7 @@ class MySQL(object):
                 host = host,
                 port = int(port),
                 user = username,
-                password = quote_plus(password),
+                password = password,
                 database = database,
                 charset = charset
             )
