@@ -887,8 +887,6 @@ def backup_restore(request):
 _SSL_DIR = str(settings.PROJ_PATH / 'etc' / 'ssl')
 _SSL_SERVER_CERT = str(settings.PROJ_PATH / 'etc' / 'ssl' / 'server.crt')
 _SSL_SERVER_KEY  = str(settings.PROJ_PATH / 'etc' / 'ssl' / 'server.key')
-_SSL_CA_DIR      = str(settings.PROJ_PATH / 'etc' / 'ssl' / 'ca')
-
 ## allowed certificate file extensions
 _CERT_EXTENSIONS = {'.crt', '.pem', '.cer'}
 
@@ -917,31 +915,6 @@ def _parse_cert_info(cert_path: str) -> dict:
     except Exception:
         info['valid'] = False
     return info
-
-
-def _list_ca_certs() -> list:
-    """
-    Return a list of CA cert dicts from the CA directory.
-
-    Returns:
-        list: [ { 'filename', 'cn', 'expiry', 'valid' }, ... ]
-    """
-
-    certs = []
-    if not os.path.isdir(_SSL_CA_DIR):
-        return certs
-    for fname in sorted(os.listdir(_SSL_CA_DIR)):
-        ext = os.path.splitext(fname)[1].lower()
-        if ext not in _CERT_EXTENSIONS:
-            continue
-        fpath = os.path.join(_SSL_CA_DIR, fname)
-        ## path safety
-        if os.path.commonpath([os.path.realpath(fpath), os.path.realpath(_SSL_CA_DIR)]) != os.path.realpath(_SSL_CA_DIR):
-            continue
-        info = _parse_cert_info(fpath)
-        info['filename'] = fname
-        certs.append(info)
-    return certs
 
 
 ## =============================================================
@@ -1121,14 +1094,8 @@ def ssh_key_delete(request):
 @require_permission('system', 'edit')
 def ssl_view(request):
     """
-    SSL Certificates management page.
-
-    Sub-tabs:
-        server  — Server cert + key for HTTPS serving
-        ca      — Trusted CA certs for outbound connections
+    SSL Certificates management page — server certificate for HTTPS serving.
     """
-
-    active_tab = request.GET.get('tab', 'server')
 
     ## server cert info
     server_cert_info = None
@@ -1136,18 +1103,13 @@ def ssl_view(request):
         server_cert_info = _parse_cert_info(_SSL_SERVER_CERT)
 
     ssl_server_enabled = SystemSetting.get('ssl_server_enabled', 'false') == 'true'
-    ca_certs = _list_ca_certs()
-    ca_bundle_path = SystemSetting.get('ssl_ca_bundle_path', _SSL_CA_DIR)
 
     return render(request, 'system/ssl.html', {
         'nav_active': 'system',
-        'active_tab': active_tab,
         'server_cert_info': server_cert_info,
         'ssl_server_enabled': ssl_server_enabled,
         'ssl_server_cert_path': _SSL_SERVER_CERT,
         'ssl_server_key_path': _SSL_SERVER_KEY,
-        'ca_certs': ca_certs,
-        'ca_bundle_path': ca_bundle_path,
     })
 
 
@@ -1260,7 +1222,7 @@ def ssl_server_toggle(request):
             conf_content = conf_content.rstrip('\n') + ssl_block
 
             SystemSetting.set('ssl_server_enabled', 'true')
-            msg = 'HTTPS enabled. Services are restarting...'
+            msg = 'HTTPS enabled. Services are restarting. Please access the UI via https:// after restart.'
             audit_detail = 'Enabled HTTPS with cert: %s' % _SSL_SERVER_CERT
 
         else:
@@ -1278,18 +1240,26 @@ def ssl_server_toggle(request):
             f.write(conf_content)
 
         ## restart services
+        ## backend can be restarted inline (separate process)
+        ## frontend must be deferred — killing it inline kills THIS request
         proj_path = str(settings.PROJ_PATH)
         script_path = os.path.join(proj_path, 'bin/service.sh')
         if os.path.isfile(script_path):
-            for svc_name in ('backend', 'frontend'):
-                port = '5001' if svc_name == 'backend' else '5002'
-                _stop_service(port)
-                subprocess.Popen(
-                    ['bash', script_path, 'start', svc_name],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                )
+            ## restart backend immediately
+            _stop_service('5001')
+            subprocess.Popen(
+                ['bash', script_path, 'start', 'backend'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            ## defer frontend restart so the HTTP response can be sent first
+            subprocess.Popen(
+                ['bash', '-c', 'sleep 2 && bash %s restart frontend' % script_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
 
         ## audit log
         try:
@@ -1359,114 +1329,6 @@ def ssl_server_delete(request):
     return redirect(_ssl_url)
 
 
-@require_permission('system', 'edit')
-@require_POST
-def ssl_ca_upload(request):
-    """
-    Upload a trusted CA certificate to etc/ssl/ca/.
-    """
-
-    _ca_url = reverse('system:ssl') + '?tab=ca'
-    ca_file = request.FILES.get('ca_file')
-
-    if not ca_file:
-        messages.error(request, 'No file selected.')
-        return redirect(_ca_url)
-
-    cert_ext = os.path.splitext(ca_file.name)[1].lower()
-    if cert_ext not in _CERT_EXTENSIONS:
-        messages.error(request, 'CA file must be .crt, .pem, or .cer')
-        return redirect(_ca_url)
-
-    try:
-        ## validate cert content
-        from cryptography import x509
-        from cryptography.hazmat.backends import default_backend
-        ca_data = ca_file.read()
-        x509.load_pem_x509_certificate(ca_data, default_backend())
-
-        os.makedirs(_SSL_CA_DIR, exist_ok=True)
-
-        ## sanitize filename — only alphanumeric, dash, underscore, dot
-        safe_name = re.sub(r'[^\w.\-]', '_', ca_file.name)
-        ## path safety
-        target = os.path.realpath(os.path.join(_SSL_CA_DIR, safe_name))
-        if os.path.commonpath([target, os.path.realpath(_SSL_CA_DIR)]) != os.path.realpath(_SSL_CA_DIR):
-            messages.error(request, 'Invalid filename.')
-            return redirect(_ca_url)
-
-        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
-        with os.fdopen(fd, 'wb') as f:
-            f.write(ca_data)
-
-        SystemSetting.set('ssl_ca_bundle_path', _SSL_CA_DIR)
-
-        ## audit log
-        try:
-            from audit.models import AuditLog
-            AuditLog.log(
-                user=request.user,
-                action='create',
-                target_type='ssl_ca_cert',
-                target_name=safe_name,
-                detail='Uploaded CA certificate: %s' % safe_name,
-                ip_address=request.META.get('REMOTE_ADDR'),
-            )
-        except Exception:
-            pass
-
-        messages.success(request, 'CA certificate "%s" uploaded.' % safe_name)
-
-    except Exception as e:
-        messages.error(request, 'Invalid CA certificate: %s' % str(e))
-
-    return redirect(_ca_url)
-
-
-@require_permission('system', 'edit')
-@require_POST
-def ssl_ca_delete(request, filename):
-    """
-    Delete a CA certificate from etc/ssl/ca/.
-    """
-
-    _ca_url = reverse('system:ssl') + '?tab=ca'
-
-    ## path safety — sanitize and confirm within CA dir
-    safe_name = re.sub(r'[^\w.\-]', '_', filename)
-    target = os.path.realpath(os.path.join(_SSL_CA_DIR, safe_name))
-    if os.path.commonpath([target, os.path.realpath(_SSL_CA_DIR)]) != os.path.realpath(_SSL_CA_DIR):
-        messages.error(request, 'Invalid filename.')
-        return redirect(_ca_url)
-
-    try:
-        if os.path.isfile(target):
-            os.remove(target)
-
-            ## audit log
-            try:
-                from audit.models import AuditLog
-                AuditLog.log(
-                    user=request.user,
-                    action='delete',
-                    target_type='ssl_ca_cert',
-                    target_name=safe_name,
-                    detail='Deleted CA certificate: %s' % safe_name,
-                    ip_address=request.META.get('REMOTE_ADDR'),
-                )
-            except Exception:
-                pass
-
-            messages.success(request, 'CA certificate "%s" deleted.' % safe_name)
-        else:
-            messages.error(request, 'Certificate not found: %s' % safe_name)
-
-    except Exception as e:
-        messages.error(request, 'Failed to delete: %s' % str(e))
-
-    return redirect(_ca_url)
-
-
 ## =============================================================
 ## Services Views
 ## =============================================================
@@ -1503,28 +1365,57 @@ def _get_service_pid(port: int):
 
 def _stop_service(port: int) -> bool:
     """
-    Stop the process listening on the given port via SIGTERM.
+    Stop all processes listening on the given port via SIGTERM,
+    falling back to SIGKILL for any that refuse to stop.
 
     Args:
         port (int): TCP port
 
     Returns:
-        bool: True if process was found and signalled
+        bool: True if process(es) were found and signalled
     """
 
-    pid = _get_service_pid(port)
-    if pid:
+    try:
+        result = subprocess.run(
+            ['lsof', '-ti', 'tcp:%d' % port],
+            capture_output=True, text=True, timeout=5
+        )
+        pids = [int(p) for p in result.stdout.strip().split('\n') if p.strip().isdigit()]
+    except Exception:
+        pids = []
+
+    if not pids:
+        return False
+
+    ## send SIGTERM to all
+    for pid in pids:
         try:
             os.kill(pid, signal.SIGTERM)
-            ## brief wait to let process stop
-            for _ in range(20):
-                time.sleep(0.1)
-                if _get_service_pid(port) is None:
-                    break
-            return True
         except ProcessLookupError:
             pass
-    return False
+
+    ## wait for port to clear
+    for _ in range(40):
+        time.sleep(0.1)
+        if _get_service_pid(port) is None:
+            return True
+
+    ## force kill remaining
+    try:
+        result = subprocess.run(
+            ['lsof', '-ti', 'tcp:%d' % port],
+            capture_output=True, text=True, timeout=5
+        )
+        remaining = [int(p) for p in result.stdout.strip().split('\n') if p.strip().isdigit()]
+        for pid in remaining:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    except Exception:
+        pass
+
+    return True
 
 
 def _read_service_conf() -> dict:

@@ -51,6 +51,12 @@ do_start() {
     ## activate project venv
     source "${PROJ_PATH}/bin/activate"
 
+    ## build optional SSL flags
+    local ssl_flags=""
+    if [ -n "${SSL_CERT_FILE}" ] && [ -n "${SSL_KEY_FILE}" ]; then
+        ssl_flags="--certfile ${SSL_CERT_FILE} --keyfile ${SSL_KEY_FILE}"
+    fi
+
     gunicorn \
         --bind "${SVC_HOST[$svc]}:${port}" \
         --workers "${SVC_WORKERS[$svc]}" \
@@ -60,6 +66,7 @@ do_start() {
         --access-logfile "${SVC_ACCESS_LOG[$svc]}" \
         --error-logfile "${SVC_ERROR_LOG[$svc]}" \
         --chdir "${SVC_CHDIR[$svc]}" \
+        ${ssl_flags} \
         --daemon \
         "${SVC_APP[$svc]}"
 
@@ -80,27 +87,30 @@ do_start() {
 do_stop() {
     local svc=$1
     local port=${SVC_PORT[$svc]}
-    local pid=$(get_pid "${port}")
+    local pids=$(lsof -ti "tcp:${port}" 2>/dev/null)
 
-    if [ -z "${pid}" ]; then
+    if [ -z "${pids}" ]; then
         echo "[${SVC_LABEL[$svc]}] Not running"
         return 0
     fi
 
-    echo -n "[${SVC_LABEL[$svc]}] Stopping (pid ${pid}) ... "
-    kill "${pid}" 2>/dev/null
+    local first_pid=$(echo "${pids}" | head -1)
+    echo -n "[${SVC_LABEL[$svc]}] Stopping (pid ${first_pid}) ... "
 
-    ## wait for process to exit
+    ## send SIGTERM to all processes on port
+    echo "${pids}" | xargs kill 2>/dev/null
+
+    ## wait for port to clear
     for i in $(seq 1 20); do
-        if ! kill -0 "${pid}" 2>/dev/null; then
+        if [ -z "$(lsof -ti tcp:${port} 2>/dev/null)" ]; then
             echo "OK"
             return 0
         fi
         sleep 0.2
     done
 
-    ## force kill if still alive
-    kill -9 "${pid}" 2>/dev/null
+    ## force kill any remaining
+    lsof -ti "tcp:${port}" 2>/dev/null | xargs kill -9 2>/dev/null
     echo "OK (forced)"
 }
 

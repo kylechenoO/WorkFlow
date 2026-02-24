@@ -30,8 +30,6 @@ urlpatterns = [
     path('ssl/server/upload/',             views.ssl_server_upload, name='ssl_server_upload'),
     path('ssl/server/toggle/',             views.ssl_server_toggle, name='ssl_server_toggle'),
     path('ssl/server/delete/',             views.ssl_server_delete, name='ssl_server_delete'),
-    path('ssl/ca/upload/',                 views.ssl_ca_upload,     name='ssl_ca_upload'),
-    path('ssl/ca/<str:filename>/delete/',  views.ssl_ca_delete,     name='ssl_ca_delete'),
 
     path('services/',                    views.services_view,   name='services'),
     path('services/<str:svc>/start/',    views.service_start,   name='service_start'),
