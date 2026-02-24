@@ -1104,7 +1104,6 @@ The full test report with detailed steps, expected results, and screenshots is a
 - **Friendly error pages** — deleted or missing workflows show a clean "Workflow Not Found" page instead of raw 404
 
 **Improvements**
-- Expanded to **14 built-in modules** (Bash, HTTP, SSH, FileIO, MySQL, MongoDB, Kafka, Elasticsearch, Prometheus, Notify, Filter, DataTransformer, Kt, MultiProcess)
 - Service management via unified `bin/service.sh` (start/stop/restart/status for backend and frontend)
 - Port configuration auto-sync between `global.json` and `service.conf` via the web UI
 - Password verification modal for sensitive system operations
