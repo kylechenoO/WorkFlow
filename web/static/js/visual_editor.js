@@ -787,12 +787,14 @@ var VisualEditor = (function () {
         if (!editor) return;
         if (!data || !data.procedures) return;
 
-        // clear canvas
+        // clear canvas and caches so incoming data takes precedence
         editor.clear();
         nodeDataMap = {};
         nodeCounter = 0;
         selectedNodeId = null;
         hideProperties();
+        _visualCache.positions = {};
+        _visualCache.connections = [];
 
         if (data.procedures.length === 0) return;
 
@@ -884,6 +886,20 @@ var VisualEditor = (function () {
                 }
             }
         });
+
+        // fallback: if no connections were drawn at all and there are 2+ nodes,
+        // infer sequential chain from procedure array order
+        if (Object.keys(connectedPairs).length === 0 && data.procedures.length >= 2) {
+            data.procedures.forEach(function (proc, idx) {
+                if (idx === 0) return;
+                var prevName = data.procedures[idx - 1].name;
+                var sourceId = nameToId[prevName];
+                var targetId = nameToId[proc.name];
+                if (sourceId && targetId) {
+                    try { editor.addConnection(sourceId, targetId, 'output_1', 'input_1'); } catch (e) {}
+                }
+            });
+        }
 
         recalculateOrder();
     }
@@ -1014,6 +1030,55 @@ var VisualEditor = (function () {
     }
 
     // =========================================================
+    //  Validation
+    // =========================================================
+
+    function validate() {
+        if (!editor) return null;
+
+        var exportData = editor.export();
+        var nodes = exportData.drawflow.Home.data;
+        var nodeIds = Object.keys(nodes).map(Number);
+
+        // single node or empty — no connection needed
+        if (nodeIds.length <= 1) return null;
+
+        // check every node has at least one connection (input or output)
+        for (var i = 0; i < nodeIds.length; i++) {
+            var id = nodeIds[i];
+            var node = nodes[id];
+            var hasConnection = false;
+
+            // check input connections
+            for (var inKey in node.inputs) {
+                if (node.inputs[inKey] && node.inputs[inKey].connections &&
+                    node.inputs[inKey].connections.length > 0) {
+                    hasConnection = true;
+                    break;
+                }
+            }
+
+            // check output connections
+            if (!hasConnection) {
+                for (var outKey in node.outputs) {
+                    if (node.outputs[outKey] && node.outputs[outKey].connections &&
+                        node.outputs[outKey].connections.length > 0) {
+                        hasConnection = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasConnection) {
+                var stepName = nodeDataMap[id] ? nodeDataMap[id].stepName : ('node ' + id);
+                return 'Step "' + stepName + '" is not connected. Please link all steps before saving.';
+            }
+        }
+
+        return null;
+    }
+
+    // =========================================================
     //  Public API
     // =========================================================
 
@@ -1025,7 +1090,8 @@ var VisualEditor = (function () {
         deleteNode: deleteNode,
         fitToView: fitToView,
         refreshConnections: refreshConnections,
-        getSelectedNode: function () { return selectedNodeId; }
+        getSelectedNode: function () { return selectedNodeId; },
+        validate: validate
     };
 
 })();

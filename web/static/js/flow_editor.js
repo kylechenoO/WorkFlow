@@ -268,12 +268,93 @@ var FlowEditor = (function () {
         }
 
         // procedures changed — full re-import needed
-        // merge visual metadata into incoming data so connections/positions survive
-        if (!data._connections && visualState._connections && visualState._connections.length > 0) {
-            data._connections = visualState._connections;
+        // build name mapping (oldName → newName) to handle renames
+        var oldProcs = visualState.procedures || [];
+        var newProcs = data.procedures || [];
+        var nameMap = {};
+        var usedOld = {};
+        var usedNew = {};
+
+        // pass 1: exact name matches (unchanged steps)
+        for (var i = 0; i < newProcs.length; i++) {
+            for (var j = 0; j < oldProcs.length; j++) {
+                if (!usedOld[j] && !usedNew[i] && newProcs[i].name === oldProcs[j].name) {
+                    nameMap[oldProcs[j].name] = newProcs[i].name;
+                    usedOld[j] = true;
+                    usedNew[i] = true;
+                }
+            }
         }
-        if (!data._positions && visualState._positions && Object.keys(visualState._positions).length > 0) {
-            data._positions = visualState._positions;
+
+        // pass 2: match remaining by same index + same mod+method (likely renames)
+        for (var i = 0; i < newProcs.length; i++) {
+            if (usedNew[i]) continue;
+            if (i < oldProcs.length && !usedOld[i] &&
+                newProcs[i].mod === oldProcs[i].mod &&
+                newProcs[i].method === oldProcs[i].method) {
+                nameMap[oldProcs[i].name] = newProcs[i].name;
+                usedOld[i] = true;
+                usedNew[i] = true;
+            }
+        }
+
+        // detect if the order changed (same step names, different sequence)
+        var orderChanged = false;
+        if (oldProcs.length === newProcs.length && oldProcs.length > 1) {
+            var sameNames = oldProcs.every(function (p) {
+                return newProcs.some(function (np) { return np.name === p.name; });
+            });
+            if (sameNames) {
+                for (var k = 0; k < oldProcs.length; k++) {
+                    if (oldProcs[k].name !== newProcs[k].name) {
+                        orderChanged = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // if order changed, build new sequential connections from new array order
+        if (orderChanged && !data._connections) {
+            var seqConns = [];
+            for (var k = 1; k < newProcs.length; k++) {
+                seqConns.push({ from: newProcs[k - 1].name, to: newProcs[k].name });
+            }
+            data._connections = seqConns;
+        }
+
+        // translate _connections using nameMap (only when order didn't change)
+        if (!orderChanged && !data._connections && visualState._connections && visualState._connections.length > 0) {
+            var mapped = [];
+            visualState._connections.forEach(function (conn) {
+                var from = nameMap[conn.from] || conn.from;
+                var to   = nameMap[conn.to]   || conn.to;
+                // only keep connection if both endpoints exist in new procedures
+                var fromExists = newProcs.some(function (p) { return p.name === from; });
+                var toExists   = newProcs.some(function (p) { return p.name === to; });
+                if (fromExists && toExists) {
+                    mapped.push({ from: from, to: to });
+                }
+            });
+            if (mapped.length > 0) {
+                data._connections = mapped;
+            }
+        }
+
+        // translate _positions using nameMap (skip when order changed — auto-layout instead)
+        if (!orderChanged && !data._positions && visualState._positions && Object.keys(visualState._positions).length > 0) {
+            var mappedPos = {};
+            for (var oldName in visualState._positions) {
+                var newName = nameMap[oldName] || oldName;
+                // only keep position if step exists in new procedures
+                var exists = newProcs.some(function (p) { return p.name === newName; });
+                if (exists) {
+                    mappedPos[newName] = visualState._positions[oldName];
+                }
+            }
+            if (Object.keys(mappedPos).length > 0) {
+                data._positions = mappedPos;
+            }
         }
 
         VisualEditor.importFromJSON(data);
@@ -525,6 +606,15 @@ var FlowEditor = (function () {
             if (!p.name || !p.mod || !p.method) {
                 return 'Step ' + (i + 1) + ': name, mod, and method are required.';
             }
+        }
+
+        // visual editor connection validation
+        var visualPane = document.getElementById('pane-visual');
+        if (visualPane && visualPane.classList.contains('show') &&
+            visualInitialized && typeof VisualEditor !== 'undefined' &&
+            typeof VisualEditor.validate === 'function') {
+            var visualErr = VisualEditor.validate();
+            if (visualErr) return visualErr;
         }
 
         return null;

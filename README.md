@@ -34,7 +34,7 @@ A Python-based **workflow automation platform** built on JSON-defined flows, dyn
 
 - **JSON-defined workflows** — declare procedures, parameters, and data flow in plain JSON
 - **Triple-mode workflow editor** — Form, Visual (drag-and-drop canvas), and JSON modes with bidirectional sync
-- **14 built-in modules** — Bash, HTTP, SSH, File I/O, MySQL, MongoDB, Kafka, Elasticsearch, Prometheus, Notify, Filter, MultiProcess, and more
+- **Built-in modules** — Bash, HTTP, SSH, File I/O, MySQL, MongoDB, Kafka, Elasticsearch, Prometheus, Notify, Filter, MultiProcess, and more
 - **Cluster failover** — multi-node failover built into MySQL and MongoDB modules (`cluster_connect`, `cluster_query`, etc.)
 - **Custom module editor** — write Python procedure modules directly in the browser with version history
 - **Run history & step viewer** — per-run execution timeline with step-level timing, results, and errors
@@ -1111,6 +1111,9 @@ The full test report with detailed steps, expected results, and screenshots is a
 
 **Bug Fixes**
 - Fix visual editor losing double-quoted content in parameter values (e.g. `sudo -u root -c "whoami"` truncated to `sudo -u root -c`)
+- Fix visual editor not syncing changes from JSON/Form editors — renaming, reordering, and content edits now reflect correctly across all tabs
+- Fix missing connection lines when workflows created via JSON or Form editor are reopened
+- Block saving workflows with unconnected nodes in the visual editor to prevent ambiguous execution order
 - Fix HTTPS SSL: gunicorn now starts with `--certfile`/`--keyfile` flags; service auto-restarts on enable/disable
 - Fix orphan gunicorn worker processes surviving after service stop
 - Fix MySQL password handling: remove unnecessary URL encoding
