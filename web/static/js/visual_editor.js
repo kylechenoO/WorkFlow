@@ -1006,7 +1006,7 @@ var VisualEditor = (function () {
     function escHtml(str) {
         var div = document.createElement('div');
         div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
+        return div.innerHTML.replace(/"/g, '&quot;');
     }
 
     function isInitialized() {

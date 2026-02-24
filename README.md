@@ -1092,7 +1092,7 @@ The full test report with detailed steps, expected results, and screenshots is a
 - **Kafka module** — producer/consumer operations with SASL/SSL support (`kafkaclient.Kafka`)
 - **MongoDB module** — full CRUD, aggregation, TLS support (`mongodb.MongoDB`)
 - **Bash module** — execute shell commands with timeout and environment variable support
-- **SSL management** — upload and manage server certificates and trusted CA certificates from the UI
+- **SSL management** — upload and manage server certificates for HTTPS with auto-restart on enable/disable
 - **Services management** — view, configure, and restart backend/frontend services from the UI
 - **Backup & restore** — export/import workflows, modules, accounts, and settings as ZIP
 - **API key management** — create, rotate, and revoke API keys with bcrypt hashing
@@ -1109,6 +1109,13 @@ The full test report with detailed steps, expected results, and screenshots is a
 - Port configuration auto-sync between `global.json` and `service.conf` via the web UI
 - Password verification modal for sensitive system operations
 - Comprehensive test suite: **321 test cases** (315 pass, 0 fail, 6 skip)
+
+**Bug Fixes**
+- Fix visual editor losing double-quoted content in parameter values (e.g. `sudo -u root -c "whoami"` truncated to `sudo -u root -c`)
+- Fix HTTPS SSL: gunicorn now starts with `--certfile`/`--keyfile` flags; service auto-restarts on enable/disable
+- Fix orphan gunicorn worker processes surviving after service stop
+- Fix MySQL password handling: remove unnecessary URL encoding
+- Fix devtool page failing to load offline (missing `{% load static %}`)
 
 **Security**
 - Passwords masked in debug logs
