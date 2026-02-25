@@ -33,8 +33,8 @@
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link active" href="{% url 'system:ssl' %}">
-      <i class="bi bi-shield-lock"></i> SSL Certs
+    <a class="nav-link active" href="{% url 'system:security' %}">
+      <i class="bi bi-shield-lock"></i> Security
     </a>
   </li>
   <li class="nav-item">
@@ -64,7 +64,143 @@
   </li>
 </ul>
 
-<!-- Server Certificate -->
+<!-- Sub-tabs -->
+<ul class="nav nav-pills mb-3">
+  <li class="nav-item">
+    <a class="nav-link {% if request.GET.tab != 'password-policy' %}active{% endif %}" href="{% url 'system:security' %}">
+      <i class="bi bi-lock"></i> SSL Certs
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if request.GET.tab == 'password-policy' %}active{% endif %}" href="{% url 'system:security' %}?tab=password-policy">
+      <i class="bi bi-key"></i> Password Policy
+    </a>
+  </li>
+</ul>
+
+{% if request.GET.tab == 'password-policy' %}
+<!-- Password Policy -->
+<div class="row g-3">
+  <div class="col-12 col-lg-6">
+    <div class="card">
+      <div class="card-header"><strong>Password Policy</strong></div>
+      <div class="card-body">
+        <form method="post" action="{% url 'system:password_policy_save' %}">
+          {% csrf_token %}
+
+          <div class="mb-3">
+            <label for="min_length" class="form-label">Minimum Password Length</label>
+            <input type="number" class="form-control" id="min_length" name="min_length"
+                   value="{{ policy.min_length }}" min="8" max="32" required>
+            <div class="form-text">Between 8 and 32 characters.</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Complexity Requirements</label>
+            <div class="form-check mb-2">
+              <input type="checkbox" class="form-check-input" id="require_uppercase" name="require_uppercase"
+                     {% if policy.require_uppercase %}checked{% endif %}>
+              <label class="form-check-label" for="require_uppercase">Require uppercase letter (A-Z)</label>
+            </div>
+            <div class="form-check mb-2">
+              <input type="checkbox" class="form-check-input" id="require_lowercase" name="require_lowercase"
+                     {% if policy.require_lowercase %}checked{% endif %}>
+              <label class="form-check-label" for="require_lowercase">Require lowercase letter (a-z)</label>
+            </div>
+            <div class="form-check mb-2">
+              <input type="checkbox" class="form-check-input" id="require_digit" name="require_digit"
+                     {% if policy.require_digit %}checked{% endif %}>
+              <label class="form-check-label" for="require_digit">Require digit (0-9)</label>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" class="form-check-input" id="require_special" name="require_special"
+                     {% if policy.require_special %}checked{% endif %}>
+              <label class="form-check-label" for="require_special">Require special character (!@#$%...)</label>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="expiry_days" class="form-label">Password Expiry (days)</label>
+            <input type="number" class="form-control" id="expiry_days" name="expiry_days"
+                   value="{{ policy.expiry_days }}" min="0" max="365" required>
+            <div class="form-text">Set to 0 to disable expiry. When enabled, users are forced to change their password after this many days.</div>
+          </div>
+
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg"></i> Save
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card">
+      <div class="card-header"><strong>Current Policy</strong></div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tr>
+            <td class="text-muted" style="width:50%">Minimum Length</td>
+            <td><span class="badge bg-info text-dark">{{ policy.min_length }} characters</span></td>
+          </tr>
+          <tr>
+            <td class="text-muted">Uppercase Required</td>
+            <td>
+              {% if policy.require_uppercase %}
+              <span class="badge bg-success">Yes</span>
+              {% else %}
+              <span class="badge bg-secondary">No</span>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted">Lowercase Required</td>
+            <td>
+              {% if policy.require_lowercase %}
+              <span class="badge bg-success">Yes</span>
+              {% else %}
+              <span class="badge bg-secondary">No</span>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted">Digit Required</td>
+            <td>
+              {% if policy.require_digit %}
+              <span class="badge bg-success">Yes</span>
+              {% else %}
+              <span class="badge bg-secondary">No</span>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted">Special Character Required</td>
+            <td>
+              {% if policy.require_special %}
+              <span class="badge bg-success">Yes</span>
+              {% else %}
+              <span class="badge bg-secondary">No</span>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted">Password Expiry</td>
+            <td>
+              {% if policy.expiry_days > 0 %}
+              <span class="badge bg-warning text-dark">{{ policy.expiry_days }} days</span>
+              {% else %}
+              <span class="badge bg-secondary">Disabled</span>
+              {% endif %}
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<!-- SSL Certs (default sub-tab) -->
 <div class="row g-3">
   <!-- Status card -->
   <div class="col-12 col-lg-5">
@@ -155,5 +291,6 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 {% endblock %}

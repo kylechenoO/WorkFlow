@@ -116,34 +116,51 @@ def change_password(request):
 
         if not request.user.check_password(current_password):
             messages.error(request, 'Current password is incorrect.')
-        elif len(new_password) < 8:
-            messages.error(request, 'New password must be at least 8 characters.')
         elif new_password != confirm_password:
             messages.error(request, 'New passwords do not match.')
         else:
-            request.user.set_password(new_password)
-            request.user.save()
-            update_session_auth_hash(request, request.user)
+            ## validate against password policy
+            from accounts.password_policy import validate_password_policy
+            policy_errors = validate_password_policy(new_password)
+            if policy_errors:
+                for err in policy_errors:
+                    messages.error(request, err)
+            else:
+                request.user.set_password(new_password)
+                request.user.save()
+                update_session_auth_hash(request, request.user)
 
-            ## log audit
-            try:
-                from audit.models import AuditLog
-                AuditLog.log(
-                    user=request.user,
-                    action='update',
-                    target_type='user',
-                    target_name=request.user.username,
-                    detail={'field': 'password'},
-                    ip_address=request.META.get('REMOTE_ADDR')
-                )
-            except Exception:
-                pass
+                ## update password_changed_at
+                try:
+                    from accounts.models import UserProfile
+                    from django.utils import timezone as dj_tz
+                    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+                    profile.password_changed_at = dj_tz.now()
+                    profile.save(update_fields=['password_changed_at'])
+                except Exception:
+                    pass
 
-            messages.success(request, 'Password changed successfully.')
-            return redirect('/')
+                ## log audit
+                try:
+                    from audit.models import AuditLog
+                    AuditLog.log(
+                        user=request.user,
+                        action='update',
+                        target_type='user',
+                        target_name=request.user.username,
+                        detail={'field': 'password'},
+                        ip_address=request.META.get('REMOTE_ADDR')
+                    )
+                except Exception:
+                    pass
 
+                messages.success(request, 'Password changed successfully.')
+                return redirect('/')
+
+    from accounts.password_policy import get_password_policy_description
     return render(request, 'accounts/change_password.html', {
         'nav_active': '',
+        'password_policy_desc': get_password_policy_description(),
     })
 
 
@@ -190,31 +207,46 @@ def profile(request):
 
             if not request.user.check_password(current_password):
                 messages.error(request, 'Current password is incorrect.')
-            elif len(new_password) < 8:
-                messages.error(request, 'New password must be at least 8 characters.')
             elif new_password != confirm_password:
                 messages.error(request, 'New passwords do not match.')
             else:
-                request.user.set_password(new_password)
-                request.user.save()
-                update_session_auth_hash(request, request.user)
+                ## validate against password policy
+                from accounts.password_policy import validate_password_policy
+                policy_errors = validate_password_policy(new_password)
+                if policy_errors:
+                    for err in policy_errors:
+                        messages.error(request, err)
+                else:
+                    request.user.set_password(new_password)
+                    request.user.save()
+                    update_session_auth_hash(request, request.user)
 
-                ## log audit
-                try:
-                    from audit.models import AuditLog
-                    AuditLog.log(
-                        user=request.user,
-                        action='update',
-                        target_type='user',
-                        target_name=request.user.username,
-                        detail={'field': 'password'},
-                        ip_address=request.META.get('REMOTE_ADDR')
-                    )
-                except Exception:
-                    pass
+                    ## update password_changed_at
+                    try:
+                        from accounts.models import UserProfile
+                        from django.utils import timezone as dj_tz
+                        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+                        profile.password_changed_at = dj_tz.now()
+                        profile.save(update_fields=['password_changed_at'])
+                    except Exception:
+                        pass
 
-                messages.success(request, 'Password changed successfully.')
-                return redirect('accounts:profile')
+                    ## log audit
+                    try:
+                        from audit.models import AuditLog
+                        AuditLog.log(
+                            user=request.user,
+                            action='update',
+                            target_type='user',
+                            target_name=request.user.username,
+                            detail={'field': 'password'},
+                            ip_address=request.META.get('REMOTE_ADDR')
+                        )
+                    except Exception:
+                        pass
+
+                    messages.success(request, 'Password changed successfully.')
+                    return redirect('accounts:profile')
 
     form = ProfileForm(instance=request.user)
 
@@ -222,11 +254,13 @@ def profile(request):
     user_groups = request.user.groups.all()
     user_roles = request.user.wf_roles.all()
 
+    from accounts.password_policy import get_password_policy_description
     return render(request, 'accounts/profile.html', {
         'nav_active': '',
         'form': form,
         'user_groups': user_groups,
         'user_roles': user_roles,
+        'password_policy_desc': get_password_policy_description(),
     })
 
 

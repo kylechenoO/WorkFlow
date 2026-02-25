@@ -26,10 +26,11 @@ urlpatterns = [
     path('backup/create/',  views.backup_create,  name='backup_create'),
     path('backup/restore/', views.backup_restore, name='backup_restore'),
 
-    path('ssl/',                           views.ssl_view,          name='ssl'),
-    path('ssl/server/upload/',             views.ssl_server_upload, name='ssl_server_upload'),
-    path('ssl/server/toggle/',             views.ssl_server_toggle, name='ssl_server_toggle'),
-    path('ssl/server/delete/',             views.ssl_server_delete, name='ssl_server_delete'),
+    path('security/',                           views.security_view,         name='security'),
+    path('security/server/upload/',             views.ssl_server_upload,     name='ssl_server_upload'),
+    path('security/server/toggle/',             views.ssl_server_toggle,     name='ssl_server_toggle'),
+    path('security/server/delete/',             views.ssl_server_delete,     name='ssl_server_delete'),
+    path('security/password-policy/',           views.password_policy_save,  name='password_policy_save'),
 
     path('services/',                    views.services_view,   name='services'),
     path('services/<str:svc>/start/',    views.service_start,   name='service_start'),

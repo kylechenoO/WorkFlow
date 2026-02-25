@@ -15,7 +15,6 @@ class UserCreateForm(forms.ModelForm):
 
     password = forms.CharField(
         widget=forms.PasswordInput(attrs={'class': 'form-control'}),
-        min_length=8,
         help_text='Minimum 8 characters.'
     )
     password_confirm = forms.CharField(
@@ -59,6 +58,12 @@ class UserCreateForm(forms.ModelForm):
             self.fields['roles'].initial = default_role
         except Role.DoesNotExist:
             pass
+        ## dynamic password help text from policy
+        try:
+            from accounts.password_policy import get_password_policy_description
+            self.fields['password'].help_text = get_password_policy_description()
+        except Exception:
+            pass
 
     def clean(self):
         cleaned_data = super().clean()
@@ -67,6 +72,11 @@ class UserCreateForm(forms.ModelForm):
 
         if password and password_confirm and password != password_confirm:
             self.add_error('password_confirm', 'Passwords do not match.')
+        elif password:
+            ## validate against password policy
+            from accounts.password_policy import validate_password_policy
+            for err in validate_password_policy(password):
+                self.add_error('password', err)
 
         return cleaned_data
 
@@ -84,6 +94,13 @@ class UserCreateForm(forms.ModelForm):
                     role.users.add(user)
                 else:
                     role.users.remove(user)
+            ## set initial password_changed_at
+            try:
+                from accounts.models import UserProfile
+                from django.utils import timezone as dj_tz
+                UserProfile.objects.get_or_create(user=user, defaults={'password_changed_at': dj_tz.now()})
+            except Exception:
+                pass
         return user
 
 
@@ -93,7 +110,6 @@ class UserEditForm(forms.ModelForm):
     password = forms.CharField(
         widget=forms.PasswordInput(attrs={'class': 'form-control'}),
         required=False,
-        min_length=8,
         help_text='Leave blank to keep current password.'
     )
     password_confirm = forms.CharField(
@@ -131,6 +147,12 @@ class UserEditForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             self.fields['groups'].initial = self.instance.groups.all()
             self.fields['roles'].initial = self.instance.wf_roles.all()
+        ## dynamic password help text from policy
+        try:
+            from accounts.password_policy import get_password_policy_description
+            self.fields['password'].help_text = 'Leave blank to keep current password. %s' % get_password_policy_description()
+        except Exception:
+            pass
 
     def clean(self):
         cleaned_data = super().clean()
@@ -139,6 +161,11 @@ class UserEditForm(forms.ModelForm):
 
         if password and password != password_confirm:
             self.add_error('password_confirm', 'Passwords do not match.')
+        elif password:
+            ## validate against password policy
+            from accounts.password_policy import validate_password_policy
+            for err in validate_password_policy(password):
+                self.add_error('password', err)
 
         return cleaned_data
 
@@ -158,6 +185,16 @@ class UserEditForm(forms.ModelForm):
                     role.users.add(user)
                 else:
                     role.users.remove(user)
+            ## update password_changed_at if password was changed
+            if password:
+                try:
+                    from accounts.models import UserProfile
+                    from django.utils import timezone as dj_tz
+                    profile, _ = UserProfile.objects.get_or_create(user=user)
+                    profile.password_changed_at = dj_tz.now()
+                    profile.save(update_fields=['password_changed_at'])
+                except Exception:
+                    pass
         return user
 
 

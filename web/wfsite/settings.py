@@ -73,6 +73,8 @@ MIDDLEWARE = [
     'system.middleware.TimezoneMiddleware',
     ## request logging middleware (feeds wf_reqlog for frontend service logs)
     'system.middleware.RequestLogMiddleware',
+    ## password expiry middleware (forces password change when expired)
+    'system.middleware.PasswordExpiryMiddleware',
 ]
 
 ROOT_URLCONF = 'wfsite.urls'
