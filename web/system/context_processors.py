@@ -13,7 +13,7 @@ from django.conf import settings
 
 ## read once at startup — pyproject.toml never changes at runtime
 def _load_meta():
-    meta = {'version': '0.0.2', 'author': 'Kyle', 'year': '2026'}
+    meta = {'version': '0.0.3', 'author': 'Kyle', 'year': '2026'}
     try:
         toml_path = settings.PROJ_PATH / 'pyproject.toml'
         content = toml_path.read_text(encoding='utf-8')

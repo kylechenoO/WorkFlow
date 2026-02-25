@@ -91,3 +91,25 @@ class Role(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class UserProfile(models.Model):
+    """
+    Extended user profile for password metadata tracking.
+
+    Stores password_changed_at for password expiration enforcement.
+    Uses OneToOneField to Django's built-in User model.
+    """
+
+    user = models.OneToOneField(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='wf_profile',
+    )
+    password_changed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'wf_user_profile'
+
+    def __str__(self):
+        return '%s profile' % self.user.username

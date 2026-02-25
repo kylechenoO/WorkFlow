@@ -84,8 +84,8 @@
           </div>
           <div class="mb-3">
             <label for="new_password" class="form-label">New Password</label>
-            <input type="password" class="form-control" id="new_password" name="new_password" required minlength="8">
-            <div class="form-text">Minimum 8 characters.</div>
+            <input type="password" class="form-control" id="new_password" name="new_password" required>
+            <div class="form-text">{{ password_policy_desc }}</div>
           </div>
           <div class="mb-3">
             <label for="confirm_password" class="form-label">Confirm New Password</label>

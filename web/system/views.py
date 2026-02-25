@@ -1092,25 +1092,107 @@ def ssh_key_delete(request):
 
 
 @require_permission('system', 'edit')
-def ssl_view(request):
+def security_view(request):
     """
-    SSL Certificates management page — server certificate for HTTPS serving.
+    Security settings page — SSL certificates and password policy.
+
+    Sub-tabs controlled via ?tab= query param:
+      - (default): SSL Certs
+      - password-policy: Password policy settings
     """
 
-    ## server cert info
+    ## server cert info (always loaded for SSL sub-tab)
     server_cert_info = None
     if os.path.isfile(_SSL_SERVER_CERT):
         server_cert_info = _parse_cert_info(_SSL_SERVER_CERT)
 
     ssl_server_enabled = SystemSetting.get('ssl_server_enabled', 'false') == 'true'
 
-    return render(request, 'system/ssl.html', {
+    ## password policy (loaded for password-policy sub-tab)
+    from accounts.password_policy import get_password_policy
+    policy = get_password_policy()
+
+    return render(request, 'system/security.html', {
         'nav_active': 'system',
         'server_cert_info': server_cert_info,
         'ssl_server_enabled': ssl_server_enabled,
         'ssl_server_cert_path': _SSL_SERVER_CERT,
         'ssl_server_key_path': _SSL_SERVER_KEY,
+        'policy': policy,
     })
+
+
+@require_permission('system', 'edit')
+@require_POST
+def password_policy_save(request):
+    """
+    Save password policy settings.
+
+    POST: validate and save policy settings to SystemSetting.
+    """
+
+    ## load args
+    min_length = request.POST.get('min_length', '8').strip()
+    require_uppercase = 'true' if request.POST.get('require_uppercase') == 'on' else 'false'
+    require_lowercase = 'true' if request.POST.get('require_lowercase') == 'on' else 'false'
+    require_digit = 'true' if request.POST.get('require_digit') == 'on' else 'false'
+    require_special = 'true' if request.POST.get('require_special') == 'on' else 'false'
+    expiry_days = request.POST.get('expiry_days', '0').strip()
+
+    _redirect_url = reverse('system:security') + '?tab=password-policy'
+
+    ## validate min_length (8-32)
+    try:
+        min_length_int = int(min_length)
+        if min_length_int < 8 or min_length_int > 32:
+            messages.error(request, 'Minimum length must be between 8 and 32.')
+            return redirect(_redirect_url)
+    except (ValueError, TypeError):
+        messages.error(request, 'Minimum length must be a number.')
+        return redirect(_redirect_url)
+
+    ## validate expiry_days (0-365)
+    try:
+        expiry_int = int(expiry_days)
+        if expiry_int < 0 or expiry_int > 365:
+            messages.error(request, 'Expiry days must be between 0 and 365.')
+            return redirect(_redirect_url)
+    except (ValueError, TypeError):
+        messages.error(request, 'Expiry days must be a number.')
+        return redirect(_redirect_url)
+
+    ## save settings
+    try:
+        SystemSetting.set('password_min_length', str(min_length_int))
+        SystemSetting.set('password_require_uppercase', require_uppercase)
+        SystemSetting.set('password_require_lowercase', require_lowercase)
+        SystemSetting.set('password_require_digit', require_digit)
+        SystemSetting.set('password_require_special', require_special)
+        SystemSetting.set('password_expiry_days', str(expiry_int))
+
+        ## audit log
+        try:
+            from audit.models import AuditLog
+            AuditLog.log(
+                user=request.user,
+                action='update',
+                target_type='system_setting',
+                target_name='password_policy',
+                detail='Updated password policy: min_length=%d, uppercase=%s, lowercase=%s, digit=%s, special=%s, expiry=%d' % (
+                    min_length_int, require_uppercase, require_lowercase, require_digit, require_special, expiry_int
+                ),
+                ip_address=request.META.get('REMOTE_ADDR'),
+            )
+        except Exception:
+            pass
+
+        messages.success(request, 'Password policy updated.')
+
+    ## error handling
+    except Exception as e:
+        messages.error(request, 'Error saving password policy: %s' % (e))
+
+    return redirect(_redirect_url)
 
 
 @require_permission('system', 'edit')
@@ -1124,7 +1206,7 @@ def ssl_server_upload(request):
 
     cert_file = request.FILES.get('cert_file')
     key_file  = request.FILES.get('key_file')
-    _ssl_url  = reverse('system:ssl') + '?tab=server'
+    _ssl_url  = reverse('system:security') + '?tab=server'
 
     if not cert_file or not key_file:
         messages.error(request, 'Both certificate and key files are required.')
@@ -1196,7 +1278,7 @@ def ssl_server_toggle(request):
     then restarts backend and frontend services.
     """
 
-    _ssl_url = reverse('system:ssl') + '?tab=server'
+    _ssl_url = reverse('system:security') + '?tab=server'
     action   = request.POST.get('action', 'enable')
 
     try:
@@ -1290,7 +1372,7 @@ def ssl_server_delete(request):
     Delete the server certificate and key files, and disable HTTPS.
     """
 
-    _ssl_url = reverse('system:ssl') + '?tab=server'
+    _ssl_url = reverse('system:security') + '?tab=server'
 
     try:
         for fpath in (_SSL_SERVER_CERT, _SSL_SERVER_KEY):

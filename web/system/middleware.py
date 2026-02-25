@@ -4,6 +4,7 @@ System Middleware
 TimezoneMiddleware — activates the system timezone from database settings.
 RequestLogMiddleware — logs every HTTP request to wf_reqlog for the
 frontend service log panel.
+PasswordExpiryMiddleware — forces password change when expired.
 """
 
 ## import buildin pkgs
@@ -136,3 +137,82 @@ class RequestLogMiddleware:
             pass
 
         return response
+
+
+## =============================================================
+## Password Expiry Middleware
+## =============================================================
+
+## module-level cache for password expiry setting
+_pw_cache = {
+    'expiry_days': None,
+    'expires': 0,
+}
+
+
+def _get_cached_expiry_days():
+    """Get password_expiry_days from cache or DB."""
+    now = time.time()
+    if _pw_cache['expiry_days'] is not None and now < _pw_cache['expires']:
+        return _pw_cache['expiry_days']
+
+    try:
+        from system.models import SystemSetting
+        val = int(SystemSetting.get('password_expiry_days', '0'))
+    except Exception:
+        val = 0
+
+    _pw_cache['expiry_days'] = val
+    _pw_cache['expires'] = now + _CACHE_TTL
+    return val
+
+
+## paths exempt from password expiry redirect
+_PW_EXEMPT = ('/accounts/login/', '/accounts/logout/', '/accounts/change-password/', '/static/', '/favicon.')
+
+
+class PasswordExpiryMiddleware:
+    """
+    Force password change when the user's password has expired.
+
+    Checks password_expiry_days setting against the user's
+    password_changed_at timestamp. Redirects to change-password
+    page if expired. Blocks ALL other pages until the user
+    changes their password.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.user.is_authenticated:
+            ## skip exempt paths
+            path = request.path
+            for exempt in _PW_EXEMPT:
+                if path.startswith(exempt):
+                    return self.get_response(request)
+
+            ## check expiry setting
+            expiry_days = _get_cached_expiry_days()
+            if expiry_days > 0:
+                try:
+                    from accounts.models import UserProfile
+                    from datetime import timedelta
+
+                    try:
+                        profile = UserProfile.objects.get(user=request.user)
+                        changed_at = profile.password_changed_at
+                    except UserProfile.DoesNotExist:
+                        changed_at = None
+
+                    ## expired if no record or older than expiry_days
+                    if changed_at is None or (timezone.now() - changed_at > timedelta(days=expiry_days)):
+                        from django.shortcuts import redirect
+                        from django.contrib import messages
+                        messages.warning(request, 'Your password has expired. Please set a new password.')
+                        return redirect('/accounts/change-password/')
+
+                except Exception:
+                    pass
+
+        return self.get_response(request)

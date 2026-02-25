@@ -1,6 +1,6 @@
 # WorkFlow
 
-**Author:** Kyle · **Version:** 0.0.2 · **License:** MIT
+**Author:** Kyle · **Version:** 0.0.3 · **License:** MIT
 
 A Python-based **workflow automation platform** built on JSON-defined flows, dynamic module loading, and a full-featured web UI for managing, executing, and monitoring workflows at scale.
 
@@ -15,6 +15,7 @@ A Python-based **workflow automation platform** built on JSON-defined flows, dyn
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
+- [Upgrading](#upgrading)
 - [Configuration Reference](#configuration-reference)
 - [Web UI](#web-ui)
 - [REST API](#rest-api)
@@ -41,10 +42,11 @@ A Python-based **workflow automation platform** built on JSON-defined flows, dyn
 - **Version control** — every workflow and module edit is versioned; diff and restore at any point
 - **Role-based access control** — granular page + action permissions via Groups and Roles
 - **Audit log** — every user action captured with IP, timestamp, and change detail
-- **System admin** — timezone, backup/restore, SSL configuration, services management, API key management, and developer tools
+- **Password policy** — configurable minimum length, complexity requirements (uppercase, lowercase, digit, special character), and password expiry with forced change
+- **System admin** — timezone, backup/restore, security (SSL + password policy), services management, API key management, and developer tools
 - **Developer tools** — built-in REST client and SQL query tool
 - **Backup & restore** — export/import workflows, modules, accounts, and settings as ZIP
-- **SSL management** — upload server certificates and trusted CA certificates
+- **SSL management** — upload server certificates and trusted CA certificates (under Security tab)
 - **Services management** — view, configure, and restart backend/frontend services from the UI
 - **SSH key management** — upload a global SSH private key and reference it as `@sys.ssh_key` in workflow procedures
 - **System variables (`@sys.`)** — shared variables resolved at execution time with role/group-based permission control
@@ -101,9 +103,6 @@ A Python-based **workflow automation platform** built on JSON-defined flows, dyn
 ### Profile
 ![Profile](screenshots/profile.png)
 
-### System Admin
-![System](screenshots/system.png)
-
 ### Timezone Settings
 ![Timezone](screenshots/timezone.png)
 
@@ -125,8 +124,11 @@ A Python-based **workflow automation platform** built on JSON-defined flows, dyn
 ### Developer Tools — SQL Query
 ![Devtool SQL](screenshots/devtool_sql.png)
 
-### SSL Configuration
-![SSL](screenshots/ssl.png)
+### Security — SSL Certs
+![Security SSL](screenshots/security_ssl.png)
+
+### Security — Password Policy
+![Security Password Policy](screenshots/security_password_policy.png)
 
 ### Services Management
 ![Services](screenshots/services.png)
@@ -215,12 +217,12 @@ WorkFlow/
 │   ├── manage.py
 │   ├── wfsite/                  # Django project settings
 │   ├── dashboard/               # Home page with stats
-│   ├── accounts/                # User / Group / Role management
+│   ├── accounts/                # User / Group / Role management + password policy
 │   ├── audit/                   # Audit log viewer
 │   ├── syslog_viewer/           # System log viewer
 │   ├── workflows/               # Workflow editor + run history
 │   ├── modules/                 # Module editor + registry
-│   ├── system/                  # System admin (backup, devtool, SSL, services, API keys)
+│   ├── system/                  # System admin (backup, devtool, security, services, API keys)
 │   ├── templates/               # Shared base template
 │   └── static/                  # CSS + JS assets
 ├── etc/
@@ -228,9 +230,11 @@ WorkFlow/
 │   └── service.conf             # Gunicorn service settings
 ├── tools/
 │   ├── workflow.ddl.sql         # Database schema
-│   └── initdb.sh                # Database initializer
+│   ├── initdb.sh                # Database initializer
+│   ├── upgrade.sh               # Platform upgrade script
+│   └── upgrade.sql              # Incremental DDL for upgrades
 ├── test/
-│   ├── test.md                  # Test cases (303 total)
+│   ├── test.md                  # Test cases (335 total)
 │   └── screenshots/             # UI screenshots
 ├── pyproject.toml
 ├── requirements.txt
@@ -332,6 +336,31 @@ cd web && python manage.py runserver 0.0.0.0:5002  # Django UI
 ### 5. First Login
 
 Navigate to `http://localhost:5002` and log in with the admin account created during `migrate`.
+
+---
+
+## Upgrading
+
+### From v0.0.2 to v0.0.3
+
+For existing deployments, use the single-trigger upgrade script:
+
+```bash
+bash tools/upgrade.sh
+```
+
+The script performs these steps automatically:
+1. Stops backend and frontend services
+2. Applies incremental database schema changes (`tools/upgrade.sql`)
+3. Runs Django migrations for the `accounts` app
+4. Seeds `UserProfile` records for all existing users (sets `password_changed_at` to current time — no forced password reset)
+5. Starts services and verifies status
+
+> **Note:** The upgrade is idempotent — safe to run multiple times. Default password policy after upgrade is permissive (min 8 chars, no complexity, no expiry) — identical to pre-upgrade behavior.
+
+### Fresh Installation
+
+For new deployments, follow the [Quick Start](#quick-start) guide. The full DDL (`tools/workflow.ddl.sql`) includes all tables.
 
 ---
 
@@ -561,11 +590,22 @@ The system section groups administrative settings in a tabbed layout.
 #### Restore (`/system/backup/?tab=restore`)
 - Upload a previously created backup ZIP to restore selected sections
 
-#### SSL Configuration (`/system/ssl/`)
+#### Security (`/system/security/`)
+
+Sub-tabbed layout with **SSL Certs** and **Password Policy** sections.
+
+**SSL Certs** (default sub-tab):
 - View HTTPS status (HTTP Only / HTTPS Enabled)
 - Upload server certificate and private key (`.crt`/`.pem` + `.key`/`.pem`)
 - Manage trusted CA certificates (upload and delete)
 - Toggle HTTPS on/off
+
+**Password Policy** (`/system/security/?tab=password-policy`):
+- Configure minimum password length (8–32 characters)
+- Require uppercase, lowercase, digit, and/or special characters
+- Set password expiry (0–365 days; 0 = disabled)
+- When expired, users are forced to change their password before accessing any page
+- Current Policy summary card shows active rules at a glance
 
 #### Services Management (`/system/services/`)
 - View backend (Flask API) and frontend (Django UI) service status
@@ -966,6 +1006,7 @@ Supported metric types: `gauge`, `counter`, `histogram`, `summary`.
 | `system_setting` | Key-value system configuration |
 | `system_api_key` | API access tokens (hashed) |
 | `system_devtool_request` | Devtool request history |
+| `wf_user_profile` | User password expiry tracking |
 | `wf_permission` | Page + action permission definitions |
 | `wf_role_permission` | Role ↔ Permission mappings |
 | `wf_group_permission` | Group ↔ Permission mappings |
@@ -1041,18 +1082,19 @@ WorkFlow is designed as an **internal tool** deployed behind a firewall. The fol
 | **API keys** | Hashed with bcrypt; plain key shown once at creation | Rotate keys regularly |
 | **SQL queries** | All parameterized (no string concatenation) | Safe by design |
 | **CSRF protection** | Enabled via Django middleware | Active on all form submissions |
+| **Password policy** | Min 8 chars, no complexity, no expiry | Enable complexity requirements and set expiry in System → Security |
 | **SSL verification** | `verify_ssl=True` by default in Http module | Do not disable in production |
 
 ---
 
 ## Testing
 
-All features have been tested across **321 test cases** covering authentication, workflows, modules, run logs, system admin, REST API, and browser UI.
+All features have been tested across **335 test cases** covering authentication, workflows, modules, run logs, system admin, REST API, and browser UI.
 
 | Metric | Count |
 |--------|-------|
-| **Total** | 321 |
-| **Pass** | 315 |
+| **Total** | 335 |
+| **Pass** | 329 |
 | **Fail** | 0 |
 | **Skip** | 6 |
 
@@ -1082,6 +1124,18 @@ The full test report with detailed steps, expected results, and screenshots is a
 
 ## Changelog
 
+### v0.0.3 (2026-02-25)
+
+**New Features**
+- **Password policy** — configurable minimum length, complexity requirements (uppercase, lowercase, digit, special character), and password expiry with forced change via System → Security → Password Policy
+- **Security tab** — renamed "SSL Certs" tab to "Security" with sub-tabs for SSL Certs and Password Policy
+- **Upgrade script** — `tools/upgrade.sh` for single-trigger platform upgrades on existing offline deployments
+
+**Improvements**
+- Dynamic password help text on all password forms reflects the current policy
+- `UserProfile` model tracks `password_changed_at` for password expiry; existing users seeded with current timestamp during upgrade
+- Comprehensive test suite: **335 test cases**
+
 ### v0.0.2 (2026-02-22)
 
 **New Features**
@@ -1107,7 +1161,6 @@ The full test report with detailed steps, expected results, and screenshots is a
 - Service management via unified `bin/service.sh` (start/stop/restart/status for backend and frontend)
 - Port configuration auto-sync between `global.json` and `service.conf` via the web UI
 - Password verification modal for sensitive system operations
-- Comprehensive test suite: **321 test cases** (315 pass, 0 fail, 6 skip)
 
 **Bug Fixes**
 - Fix visual editor losing double-quoted content in parameter values (e.g. `sudo -u root -c "whoami"` truncated to `sudo -u root -c`)
