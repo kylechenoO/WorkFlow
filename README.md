@@ -351,10 +351,8 @@ bash tools/upgrade.sh
 
 The script performs these steps automatically:
 1. Stops backend and frontend services
-2. Applies incremental database schema changes (`tools/upgrade.sql`)
-3. Runs Django migrations for the `accounts` app
-4. Seeds `UserProfile` records for all existing users (sets `password_changed_at` to current time — no forced password reset)
-5. Starts services and verifies status
+2. Applies incremental database changes (`tools/upgrade.sql`) — creates new tables, seeds data, records migration state
+3. Starts services and verifies status
 
 > **Note:** The upgrade is idempotent — safe to run multiple times. Default password policy after upgrade is permissive (min 8 chars, no complexity, no expiry) — identical to pre-upgrade behavior.
 
