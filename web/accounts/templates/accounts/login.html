@@ -84,21 +84,18 @@
       border-radius: 8px;
       font-size: 0.9rem;
     }
-    .login-wrapper {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
     .login-footer {
+      position: fixed;
+      bottom: 12px;
+      left: 0;
+      right: 0;
       text-align: center;
       font-size: 12px;
       color: rgba(255,255,255,0.45);
-      margin-top: 16px;
     }
   </style>
 </head>
 <body>
-  <div class="login-wrapper">
   <div class="login-card">
     <div class="login-header">
       <h3><i class="bi bi-diagram-3"></i> WorkFlow</h3>
@@ -131,7 +128,6 @@
 
   <div class="login-footer">
     {{ app_copyright }} &nbsp;·&nbsp; WorkFlow v{{ app_version }}
-  </div>
   </div>
 
   <!-- Bootstrap 5 JS -->
